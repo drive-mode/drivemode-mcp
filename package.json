@@ -1,0 +1,25 @@
+{
+	"name": "drivemode-mcp",
+	"version": "0.1.0",
+	"private": true,
+	"description": "Drive Mode MCP — agent→stage write path + reference viewer over collaboration-harness",
+	"type": "module",
+	"workspaces": ["apps/*", "packages/*"],
+	"scripts": {
+		"build": "bun run --filter '*' build",
+		"typecheck": "bun run --filter '*' typecheck",
+		"test": "bun test",
+		"check": "bun run typecheck && bun test && bun run --filter @drivemode/writer build",
+		"writer": "bun run --cwd apps/writer start",
+		"viewer": "bun run --cwd apps/viewer dev",
+		"dev": "bun run writer"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"license": "Apache-2.0",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/drive-mode/drivemode-mcp.git"
+	}
+}

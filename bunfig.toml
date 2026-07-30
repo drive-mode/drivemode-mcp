@@ -1,0 +1,6 @@
+[install]
+# Private drive-mode org packages (optional when using github: deps)
+# export BUN_AUTH_TOKEN / GITHUB_TOKEN before bun install
+
+[install.scopes]
+"@drive-mode" = { url = "https://npm.pkg.github.com", token = "${GITHUB_TOKEN}" }

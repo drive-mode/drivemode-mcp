@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+.env
+.env.*
+coverage/
+apps/viewer/dist/
+apps/writer/dist/
