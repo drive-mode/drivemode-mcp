@@ -34,6 +34,16 @@ const BeatPayload = z
 		durationSec: z.number().positive().optional(),
 		/** Work event ids this beat choreographs. */
 		relatedEventIds: z.array(z.string().min(1)).optional(),
+		/**
+		 * Director-curated stage lines: plan steps, diff summary lines,
+		 * command output, test names, metric rows ("label|value"). Typed
+		 * text the director chose to stage — events, never pixels; never
+		 * raw file contents or transcripts.
+		 */
+		steps: z.array(z.string()).max(24).optional(),
+		/** Indexes into `steps` the stage accents (chosen option, new
+		 * node, after-metric). */
+		accent: z.array(z.number().int().nonnegative()).max(24).optional(),
 		summary: z.string().optional(),
 	})
 	.strict();
