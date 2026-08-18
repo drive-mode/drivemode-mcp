@@ -72,6 +72,21 @@ describe("writer acceptance", () => {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
+				tool: "title_grant",
+				args: {
+					grantId: "grant-drive-partner",
+					agentId: "drive:partner",
+					title: "presenter",
+					scopeKind: "room",
+					scopeRef: "default",
+					expiresAt: new Date(Date.now() + 60_000).toISOString(),
+				},
+			}),
+		});
+		await fetch(`${baseUrl}/rpc`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
 				tool: "stage_set_sharer",
 				args: { participantId: "drive:partner", kind: "agent" },
 			}),
@@ -79,6 +94,7 @@ describe("writer acceptance", () => {
 
 		snap = await fetch(`${baseUrl}/snapshot`).then((r) => r.json());
 		expect(snap.room.participants.length).toBe(2);
+		expect(snap.room.stage.presenterGrantId).toBe("grant-drive-partner");
 
 		const decision = await fetch(`${baseUrl}/rpc`, {
 			method: "POST",

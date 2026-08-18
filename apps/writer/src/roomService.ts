@@ -1,8 +1,13 @@
 import {
+	AgentRuntimeBadgeSchema,
+	AgentTitleGrantSchema,
 	allowNarrationByRate,
 	classifyInterrupt,
+	isTitleGrantActive,
 	narrate,
 	type AddressSet,
+	type AgentRuntimeBadge,
+	type AgentTitleGrant,
 	type DriveEvent,
 	type DriveSubMode,
 	type Participant,
@@ -50,6 +55,22 @@ export function createRoomService(store: WriterStore) {
 		};
 	}
 
+	function assertAgentParticipant(agentId: string): void {
+		const participant = store
+			.getState()
+			.snapshot.participants.find((candidate) => candidate.id === agentId);
+		if (participant?.kind !== "agent") {
+			throw new Error(`Presenter must reference a seated agent: ${agentId}`);
+		}
+	}
+
+	function activePresenterAt(at: string): AgentTitleGrant | undefined {
+		return Object.values(store.getState().snapshot.titleGrantsById).find(
+			(grant) =>
+				grant.title === "presenter" && isTitleGrantActive(grant, at),
+		);
+	}
+
 	return {
 		snapshot() {
 			const state = store.getState();
@@ -94,8 +115,24 @@ export function createRoomService(store: WriterStore) {
 		},
 
 		setSharer(sharer: StageSharer | null, actorId?: string) {
+			const eventBase = base(actorId);
+			if (sharer?.kind === "agent") {
+				const eligible = Object.values(
+					store.getState().snapshot.titleGrantsById,
+				).some(
+					(grant) =>
+						grant.agentId === sharer.participantId &&
+						grant.title === "presenter" &&
+						isTitleGrantActive(grant, eventBase.at),
+				);
+				if (!eligible) {
+					throw new Error(
+						"Agent stage sharing requires an active Presenter title grant",
+					);
+				}
+			}
 			return store.append({
-				...base(actorId),
+				...eventBase,
 				type: "control.stage",
 				track: "control",
 				sharer,
@@ -158,7 +195,11 @@ export function createRoomService(store: WriterStore) {
 
 		setProfile(
 			participantId: string,
-			profile: { displayName?: string; ink?: string },
+			profile: {
+				displayName?: string;
+				ink?: string;
+				runtimeBadge?: AgentRuntimeBadge;
+			},
 			actorId?: string,
 		) {
 			const results = [];
@@ -174,6 +215,9 @@ export function createRoomService(store: WriterStore) {
 				);
 			}
 			const state = store.getState();
+			const runtimeBadge = profile.runtimeBadge
+				? AgentRuntimeBadgeSchema.parse(profile.runtimeBadge)
+				: state.snapshot.profilesByParticipantId[participantId]?.runtimeBadge;
 			const nextProfiles = {
 				...state.snapshot.profilesByParticipantId,
 				[participantId]: {
@@ -184,17 +228,130 @@ export function createRoomService(store: WriterStore) {
 					ink:
 						profile.ink ??
 						state.snapshot.profilesByParticipantId[participantId]?.ink,
+					runtimeBadge,
 				},
 			};
 			state.snapshot = {
 				...state.snapshot,
 				profilesByParticipantId: nextProfiles,
 			};
-			return results.at(-1) ?? {
-				seq: Math.max(0, state.nextSeq - 1),
+			const last = results.at(-1);
+			return {
+				seq: last?.seq ?? Math.max(0, state.nextSeq - 1),
 				snapshot: state.snapshot,
-				event: null as DriveEvent | null,
+				event: last?.event ?? (null as DriveEvent | null),
 			};
+		},
+
+		grantTitle(input: {
+			grantId: string;
+			agentId: string;
+			title: "presenter";
+			scope: AgentTitleGrant["scope"];
+			skillBundleRefs?: string[];
+			resourceGrantRefs?: string[];
+			delegatedAgentIds?: string[];
+			permissions?: AgentTitleGrant["permissions"];
+			expiresAt: string;
+			actorId?: string;
+		}) {
+			const grantedAt = nowIso();
+			const grant = AgentTitleGrantSchema.parse({
+				id: input.grantId,
+				agentId: input.agentId,
+				title: input.title,
+				scope: input.scope,
+				skillBundleRefs: input.skillBundleRefs ?? [],
+				resourceGrantRefs: input.resourceGrantRefs ?? [],
+				delegatedAgentIds: input.delegatedAgentIds ?? [],
+				permissions: input.permissions ?? ["stage.present"],
+				grantedAt,
+				expiresAt: input.expiresAt,
+			});
+			assertAgentParticipant(grant.agentId);
+			const active = activePresenterAt(grantedAt);
+			if (active && active.id !== grant.id) {
+				throw new Error(
+					`Presenter already owned by ${active.agentId}; use title_transfer`,
+				);
+			}
+			const event: DriveEvent = {
+				...base(input.actorId),
+				at: grantedAt,
+				type: "control.title_granted",
+				track: "control",
+				grant,
+			};
+			return store.append(event);
+		},
+
+		revokeTitle(input: {
+			grantId: string;
+			reason?: "revoked" | "expired" | "policy";
+			actorId?: string;
+		}) {
+			const grant = store.getState().snapshot.titleGrantsById[input.grantId];
+			if (!grant) {
+				throw new Error(`Unknown title grant: ${input.grantId}`);
+			}
+			const revokedAt = nowIso();
+			const event: DriveEvent = {
+				...base(input.actorId),
+				at: revokedAt,
+				type: "control.title_revoked",
+				track: "control",
+				grantId: input.grantId,
+				revokedAt,
+				reason: input.reason ?? "revoked",
+			};
+			return store.append(event);
+		},
+
+		transferTitle(input: {
+			fromGrantId: string;
+			toGrantId: string;
+			toAgentId: string;
+			title: "presenter";
+			skillBundleRefs?: string[];
+			resourceGrantRefs?: string[];
+			delegatedAgentIds?: string[];
+			permissions?: AgentTitleGrant["permissions"];
+			expiresAt: string;
+			actorId?: string;
+		}) {
+			const transferredAt = nowIso();
+			const from = store.getState().snapshot.titleGrantsById[input.fromGrantId];
+			if (
+				!from ||
+				from.title !== input.title ||
+				!isTitleGrantActive(from, transferredAt)
+			) {
+				throw new Error(`Inactive title grant: ${input.fromGrantId}`);
+			}
+			assertAgentParticipant(input.toAgentId);
+			const toGrant = AgentTitleGrantSchema.parse({
+				id: input.toGrantId,
+				agentId: input.toAgentId,
+				title: input.title,
+				scope: from.scope,
+				skillBundleRefs: input.skillBundleRefs ?? [],
+				resourceGrantRefs: input.resourceGrantRefs ?? [],
+				delegatedAgentIds: input.delegatedAgentIds ?? [],
+				permissions: input.permissions ?? ["stage.present"],
+				grantedAt: transferredAt,
+				expiresAt: input.expiresAt,
+			});
+			const event: DriveEvent = {
+				...base(input.actorId),
+				at: transferredAt,
+				type: "control.title_transferred",
+				track: "control",
+				title: input.title,
+				fromGrantId: input.fromGrantId,
+				toGrant,
+				transferredAt,
+			};
+			return store.append(event);
 		},
 
 		setActivePack(packId: string) {
