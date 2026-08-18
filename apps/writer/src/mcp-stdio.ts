@@ -90,6 +90,10 @@ async function main() {
 		participantId: z.string().min(1),
 		displayName: z.string().optional(),
 		ink: z.string().optional(),
+		runtimeFamily: z
+			.enum(["claude", "codex", "cline", "apple", "other"])
+			.optional(),
+		executionLocation: z.enum(["host", "device", "managed"]).optional(),
 		actorId: z.string().optional(),
 	});
 	tool(server, "address_set", "Set address scope.", {
@@ -105,9 +109,39 @@ async function main() {
 		actorId: z.string().optional(),
 		narrate: z.boolean().optional(),
 	});
-	tool(server, "stage_set_sharer", "Point Spotlight at a participant.", {
+	tool(server, "stage_set_sharer", "Point typed stage at an eligible participant.", {
 		participantId: z.string().nullable(),
 		kind: z.enum(["human", "agent"]).optional(),
+		actorId: z.string().optional(),
+	});
+	tool(server, "title_grant", "Grant a temporary Presenter title.", {
+		grantId: z.string().min(1),
+		agentId: z.string().min(1),
+		title: z.literal("presenter"),
+		scopeKind: z.enum(["room", "session", "stage"]),
+		scopeRef: z.string().min(1),
+		skillBundleRefs: z.array(z.string().min(1)).max(32).default([]),
+		resourceGrantRefs: z.array(z.string().min(1)).max(64).default([]),
+		delegatedAgentIds: z.array(z.string().min(1)).max(32).default([]),
+		permissions: z.array(z.literal("stage.present")).default(["stage.present"]),
+		expiresAt: z.string().datetime(),
+		actorId: z.string().optional(),
+	});
+	tool(server, "title_revoke", "Revoke a title grant.", {
+		grantId: z.string().min(1),
+		reason: z.enum(["revoked", "expired", "policy"]).default("revoked"),
+		actorId: z.string().optional(),
+	});
+	tool(server, "title_transfer", "Atomically transfer Presenter.", {
+		fromGrantId: z.string().min(1),
+		toGrantId: z.string().min(1),
+		toAgentId: z.string().min(1),
+		title: z.literal("presenter"),
+		skillBundleRefs: z.array(z.string().min(1)).max(32).default([]),
+		resourceGrantRefs: z.array(z.string().min(1)).max(64).default([]),
+		delegatedAgentIds: z.array(z.string().min(1)).max(32).default([]),
+		permissions: z.array(z.literal("stage.present")).default(["stage.present"]),
+		expiresAt: z.string().datetime(),
 		actorId: z.string().optional(),
 	});
 	tool(server, "mode_set", "Set soft mode.", {

@@ -73,11 +73,27 @@ async function dispatchRpc(
 			return { participants: snap.room.participants, seq: snap.seq };
 		}
 		case "roster_set_profile": {
+			const runtimeFamily = args.runtimeFamily as
+				| "claude"
+				| "codex"
+				| "cline"
+				| "apple"
+				| "other"
+				| undefined;
+			const executionLocation = args.executionLocation as
+				| "host"
+				| "device"
+				| "managed"
+				| undefined;
 			const result = service.setProfile(
 				String(args.participantId),
 				{
 					displayName: args.displayName as string | undefined,
 					ink: args.ink as string | undefined,
+					runtimeBadge:
+						runtimeFamily && executionLocation
+							? { family: runtimeFamily, executionLocation }
+							: undefined,
 				},
 				args.actorId as string | undefined,
 			);
@@ -131,6 +147,48 @@ async function dispatchRpc(
 				args.actorId as string | undefined,
 			);
 			return { seq: result.seq, room: result.snapshot };
+		}
+		case "title_grant": {
+			const result = service.grantTitle({
+				grantId: requiredString(args, "grantId"),
+				agentId: requiredString(args, "agentId"),
+				title: "presenter",
+				scope: {
+					kind: args.scopeKind as "room" | "session" | "stage",
+					ref: requiredString(args, "scopeRef"),
+				},
+				skillBundleRefs: (args.skillBundleRefs as string[]) ?? [],
+				resourceGrantRefs: (args.resourceGrantRefs as string[]) ?? [],
+				delegatedAgentIds: (args.delegatedAgentIds as string[]) ?? [],
+				permissions: ["stage.present"],
+				expiresAt: requiredString(args, "expiresAt"),
+				actorId: args.actorId as string | undefined,
+			});
+			return { seq: result.seq, event: result.event, room: result.snapshot };
+		}
+		case "title_revoke": {
+			const result = service.revokeTitle({
+				grantId: requiredString(args, "grantId"),
+				reason:
+					(args.reason as "revoked" | "expired" | "policy") ?? "revoked",
+				actorId: args.actorId as string | undefined,
+			});
+			return { seq: result.seq, event: result.event, room: result.snapshot };
+		}
+		case "title_transfer": {
+			const result = service.transferTitle({
+				fromGrantId: requiredString(args, "fromGrantId"),
+				toGrantId: requiredString(args, "toGrantId"),
+				toAgentId: requiredString(args, "toAgentId"),
+				title: "presenter",
+				skillBundleRefs: (args.skillBundleRefs as string[]) ?? [],
+				resourceGrantRefs: (args.resourceGrantRefs as string[]) ?? [],
+				delegatedAgentIds: (args.delegatedAgentIds as string[]) ?? [],
+				permissions: ["stage.present"],
+				expiresAt: requiredString(args, "expiresAt"),
+				actorId: args.actorId as string | undefined,
+			});
+			return { seq: result.seq, event: result.event, room: result.snapshot };
 		}
 		case "mode_set": {
 			const result = service.setMode(

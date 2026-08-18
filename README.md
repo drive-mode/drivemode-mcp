@@ -45,9 +45,10 @@ Discovery file (written on writer start): `~/.drivemode/writer.json`.
 | Tool | Primitive |
 |---|---|
 | `room_join` / `room_leave` / `room_snapshot` | Presence |
-| `roster_list` / `roster_set_profile` | Presence (appearance only) |
+| `roster_list` / `roster_set_profile` | Persona + sanitized runtime badge |
 | `address_set` | Address |
 | `stage_publish_work` / `stage_set_sharer` | Spotlight |
+| `title_grant` / `title_transfer` / `title_revoke` | Temporary Agent Titles |
 | `mode_set` / `mode_get` | Control |
 | `interrupt_raise` / `interrupt_ack` | Interrupt |
 | `conversation_publish` | Narration |
@@ -60,6 +61,11 @@ Session lifecycle is append-only: create → schedule → start → end.
 `room_invite` accepts the related `sessionId`, so clients can join an
 invitation to the same registry record instead of matching titles.
 
+Agent stage sharing requires an active `Presenter` title. Presenter ownership
+is exclusive; transfers and revocations are append-only control events. Title
+payloads contain only opaque skill/resource references, never their contents,
+and the stage remains typed events rather than pixel streaming.
+
 ## Packs
 
 - `coding` — `work.edit`, `work.command`, `work.test`, `work.plan`, `work.decision`, `work.generic`
@@ -69,7 +75,7 @@ invitation to the same registry record instead of matching titles.
 
 - One writer per room. MCP is a façade (`/rpc` + stdio proxy).
 - Tools append **events**, never HTML/UI blobs.
-- No prompts, tool allowlists, API keys, or model IDs in MCP.
+- No prompts, tool allowlists, API keys, endpoints, or model IDs in MCP.
 - Privacy-strict: conversation bodies stay in-memory; no transcript/audio persistence by default.
 - Do **not** hardcode a magic port as identity. Use the printed URL / discovery file.
 

@@ -102,18 +102,32 @@ export function createMcpServer(service: RoomService): McpServer {
 
 	server.tool(
 		"roster_set_profile",
-		"Set appearance overlay only (display name / ink). Never prompts or models.",
+		"Set persona appearance plus a sanitized runtime family/location badge.",
 		{
 			participantId: z.string().min(1),
 			displayName: z.string().min(1).optional(),
 			ink: z.string().min(1).optional(),
+			runtimeFamily: z
+				.enum(["claude", "codex", "cline", "apple", "other"])
+				.optional(),
+			executionLocation: z.enum(["host", "device", "managed"]).optional(),
 			actorId: z.string().min(1).optional(),
 		},
 		async (args) => {
 			try {
 				const result = service.setProfile(
 					args.participantId,
-					{ displayName: args.displayName, ink: args.ink },
+					{
+						displayName: args.displayName,
+						ink: args.ink,
+						runtimeBadge:
+							args.runtimeFamily && args.executionLocation
+								? {
+									family: args.runtimeFamily,
+									executionLocation: args.executionLocation,
+								}
+								: undefined,
+					},
 					args.actorId,
 				);
 				return jsonResult({ seq: result.seq, room: result.snapshot });
@@ -183,7 +197,7 @@ export function createMcpServer(service: RoomService): McpServer {
 
 	server.tool(
 		"stage_set_sharer",
-		"Point Spotlight at a participant, or clear it.",
+		"Point the typed stage at a participant. Agents require Presenter.",
 		{
 			participantId: z.string().min(1).nullable(),
 			kind: z.enum(["human", "agent"]).optional(),
@@ -200,6 +214,86 @@ export function createMcpServer(service: RoomService): McpServer {
 							};
 				const result = service.setSharer(sharer, args.actorId);
 				return jsonResult({ seq: result.seq, room: result.snapshot });
+			} catch (error) {
+				return errorResult(error);
+			}
+		},
+	);
+
+	server.tool(
+		"title_grant",
+		"Grant a temporary scoped title. Presenter grants stage.present only.",
+		{
+			grantId: z.string().min(1),
+			agentId: z.string().min(1),
+			title: z.literal("presenter"),
+			scopeKind: z.enum(["room", "session", "stage"]),
+			scopeRef: z.string().min(1),
+			skillBundleRefs: z.array(z.string().min(1)).max(32).default([]),
+			resourceGrantRefs: z.array(z.string().min(1)).max(64).default([]),
+			delegatedAgentIds: z.array(z.string().min(1)).max(32).default([]),
+			permissions: z.array(z.literal("stage.present")).default(["stage.present"]),
+			expiresAt: z.string().datetime(),
+			actorId: z.string().min(1).optional(),
+		},
+		async (args) => {
+			try {
+				const result = service.grantTitle({
+					grantId: args.grantId,
+					agentId: args.agentId,
+					title: args.title,
+					scope: { kind: args.scopeKind, ref: args.scopeRef },
+					skillBundleRefs: args.skillBundleRefs,
+					resourceGrantRefs: args.resourceGrantRefs,
+					delegatedAgentIds: args.delegatedAgentIds,
+					permissions: args.permissions,
+					expiresAt: args.expiresAt,
+					actorId: args.actorId,
+				});
+				return jsonResult({ seq: result.seq, event: result.event, room: result.snapshot });
+			} catch (error) {
+				return errorResult(error);
+			}
+		},
+	);
+
+	server.tool(
+		"title_revoke",
+		"Revoke a title grant and release its stage ownership.",
+		{
+			grantId: z.string().min(1),
+			reason: z.enum(["revoked", "expired", "policy"]).default("revoked"),
+			actorId: z.string().min(1).optional(),
+		},
+		async (args) => {
+			try {
+				const result = service.revokeTitle(args);
+				return jsonResult({ seq: result.seq, event: result.event, room: result.snapshot });
+			} catch (error) {
+				return errorResult(error);
+			}
+		},
+	);
+
+	server.tool(
+		"title_transfer",
+		"Atomically transfer Presenter to another seated agent.",
+		{
+			fromGrantId: z.string().min(1),
+			toGrantId: z.string().min(1),
+			toAgentId: z.string().min(1),
+			title: z.literal("presenter"),
+			skillBundleRefs: z.array(z.string().min(1)).max(32).default([]),
+			resourceGrantRefs: z.array(z.string().min(1)).max(64).default([]),
+			delegatedAgentIds: z.array(z.string().min(1)).max(32).default([]),
+			permissions: z.array(z.literal("stage.present")).default(["stage.present"]),
+			expiresAt: z.string().datetime(),
+			actorId: z.string().min(1).optional(),
+		},
+		async (args) => {
+			try {
+				const result = service.transferTitle(args);
+				return jsonResult({ seq: result.seq, event: result.event, room: result.snapshot });
 			} catch (error) {
 				return errorResult(error);
 			}
