@@ -468,6 +468,7 @@ export function createRoomService(store: WriterStore) {
 		invite(input: {
 			inviterId: string;
 			inviteeId: string;
+			sessionId?: string;
 			title?: string;
 			note?: string;
 		}) {
@@ -477,8 +478,74 @@ export function createRoomService(store: WriterStore) {
 				track: "control",
 				inviterId: input.inviterId,
 				inviteeId: input.inviteeId,
+				...(input.sessionId ? { sessionId: input.sessionId } : {}),
 				...(input.title ? { title: input.title } : {}),
 				...(input.note ? { note: input.note } : {}),
+			};
+			return store.append(event);
+		},
+
+		createSession(input: {
+			sessionId: string;
+			organizerId: string;
+			title: string;
+			project: string;
+			participantIds: string[];
+			agendaTaskIds: string[];
+			note?: string;
+		}) {
+			const event: DriveEvent = {
+				...base(input.organizerId),
+				type: "control.session_created",
+				track: "control",
+				sessionId: input.sessionId,
+				organizerId: input.organizerId,
+				title: input.title,
+				project: input.project,
+				participantIds: input.participantIds,
+				agendaTaskIds: input.agendaTaskIds,
+				...(input.note ? { note: input.note } : {}),
+			};
+			return store.append(event);
+		},
+
+		scheduleSession(sessionId: string, scheduledFor: string, actorId?: string) {
+			const event: DriveEvent = {
+				...base(actorId),
+				type: "control.session_scheduled",
+				track: "control",
+				sessionId,
+				scheduledFor,
+			};
+			return store.append(event);
+		},
+
+		startSession(sessionId: string, programId: string, actorId?: string) {
+			const event: DriveEvent = {
+				...base(actorId),
+				type: "control.session_started",
+				track: "control",
+				sessionId,
+				programId,
+			};
+			return store.append(event);
+		},
+
+		endSession(input: {
+			sessionId: string;
+			outcome?: "completed" | "cancelled";
+			replayArtifactId?: string;
+			actorId?: string;
+		}) {
+			const event: DriveEvent = {
+				...base(input.actorId),
+				type: "control.session_ended",
+				track: "control",
+				sessionId: input.sessionId,
+				outcome: input.outcome ?? "completed",
+				...(input.replayArtifactId
+					? { replayArtifactId: input.replayArtifactId }
+					: {}),
 			};
 			return store.append(event);
 		},

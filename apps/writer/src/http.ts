@@ -14,6 +14,14 @@ type RpcBody = {
 	args?: Record<string, unknown>;
 };
 
+function requiredString(args: Record<string, unknown>, key: string): string {
+	const value = args[key];
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new Error(`${key} is required`);
+	}
+	return value;
+}
+
 async function dispatchRpc(
 	service: RoomService,
 	tool: string,
@@ -169,10 +177,48 @@ async function dispatchRpc(
 		}
 		case "room_invite": {
 			const result = service.invite({
-				inviterId: String(args.inviterId),
-				inviteeId: String(args.inviteeId),
+				inviterId: requiredString(args, "inviterId"),
+				inviteeId: requiredString(args, "inviteeId"),
+				sessionId: args.sessionId as string | undefined,
 				title: args.title as string | undefined,
 				note: args.note as string | undefined,
+			});
+			return { seq: result.seq, event: result.event };
+		}
+		case "session_create": {
+			const result = service.createSession({
+				sessionId: requiredString(args, "sessionId"),
+				organizerId: requiredString(args, "organizerId"),
+				title: requiredString(args, "title"),
+				project: requiredString(args, "project"),
+				participantIds: (args.participantIds as string[]) ?? [],
+				agendaTaskIds: (args.agendaTaskIds as string[]) ?? [],
+				note: args.note as string | undefined,
+			});
+			return { seq: result.seq, event: result.event };
+		}
+		case "session_schedule": {
+			const result = service.scheduleSession(
+				requiredString(args, "sessionId"),
+				requiredString(args, "scheduledFor"),
+				args.actorId as string | undefined,
+			);
+			return { seq: result.seq, event: result.event };
+		}
+		case "session_start": {
+			const result = service.startSession(
+				requiredString(args, "sessionId"),
+				requiredString(args, "programId"),
+				args.actorId as string | undefined,
+			);
+			return { seq: result.seq, event: result.event };
+		}
+		case "session_end": {
+			const result = service.endSession({
+				sessionId: requiredString(args, "sessionId"),
+				outcome: args.outcome as "completed" | "cancelled" | undefined,
+				replayArtifactId: args.replayArtifactId as string | undefined,
+				actorId: args.actorId as string | undefined,
 			});
 			return { seq: result.seq, event: result.event };
 		}

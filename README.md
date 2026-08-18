@@ -51,8 +51,14 @@ Discovery file (written on writer start): `~/.drivemode/writer.json`.
 | `mode_set` / `mode_get` | Control |
 | `interrupt_raise` / `interrupt_ack` | Interrupt |
 | `conversation_publish` | Narration |
+| `room_invite` | Session invitation |
+| `session_create` / `session_schedule` / `session_start` / `session_end` | Session registry |
 | `events_since` | Resume |
 | `pack_set` / `pack_list` | Packs |
+
+Session lifecycle is append-only: create → schedule → start → end.
+`room_invite` accepts the related `sessionId`, so clients can join an
+invitation to the same registry record instead of matching titles.
 
 ## Packs
 

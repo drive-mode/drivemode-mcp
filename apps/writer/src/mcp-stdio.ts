@@ -133,6 +133,38 @@ async function main() {
 		text: z.string().min(1).max(500),
 		actorId: z.string().optional(),
 	});
+	tool(server, "room_invite", "Invite a participant to a working session.", {
+		inviterId: z.string().min(1),
+		inviteeId: z.string().min(1),
+		sessionId: z.string().min(1).optional(),
+		title: z.string().min(1).optional(),
+		note: z.string().max(280).optional(),
+	});
+	tool(server, "session_create", "Create a working-session registry record.", {
+		sessionId: z.string().min(1),
+		organizerId: z.string().min(1),
+		title: z.string().min(1).max(160),
+		project: z.string().min(1).max(160),
+		participantIds: z.array(z.string().min(1)).min(1).max(32),
+		agendaTaskIds: z.array(z.string().min(1)).max(100),
+		note: z.string().max(280).optional(),
+	});
+	tool(server, "session_schedule", "Schedule a working session.", {
+		sessionId: z.string().min(1),
+		scheduledFor: z.string().datetime(),
+		actorId: z.string().optional(),
+	});
+	tool(server, "session_start", "Mark a working session live.", {
+		sessionId: z.string().min(1),
+		programId: z.string().min(1),
+		actorId: z.string().optional(),
+	});
+	tool(server, "session_end", "End or cancel a working session.", {
+		sessionId: z.string().min(1),
+		outcome: z.enum(["completed", "cancelled"]).default("completed"),
+		replayArtifactId: z.string().min(1).optional(),
+		actorId: z.string().optional(),
+	});
 	tool(server, "events_since", "Resume from seq.", {
 		sinceSeq: z.number().int().nonnegative().default(0),
 	});

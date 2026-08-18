@@ -146,6 +146,7 @@ describe("room_invite", () => {
 		const result = service.invite({
 			inviterId: "maya",
 			inviteeId: "harrison",
+			sessionId: "session-payments",
 			title: "Payments refactor",
 			note: "Plan review, ~15 minutes.",
 		});
@@ -155,7 +156,43 @@ describe("room_invite", () => {
 		expect(invite).toBeDefined();
 		if (invite?.type === "control.invite") {
 			expect(invite.inviteeId).toBe("harrison");
+			expect(invite.sessionId).toBe("session-payments");
 			expect(Date.parse(invite.at)).toBeGreaterThan(0);
 		}
+	});
+});
+
+describe("session registry", () => {
+	test("lifecycle methods append ordered, typed control events", () => {
+		const store = createWriterStore({ roomId: "default" });
+		const service = createRoomService(store);
+		service.createSession({
+			sessionId: "session-auth",
+			organizerId: "harrison",
+			title: "Auth middleware — working session",
+			project: "Auth middleware",
+			participantIds: ["harrison", "maya"],
+			agendaTaskIds: ["task-review-gate"],
+			note: "Review the gate together.",
+		});
+		service.scheduleSession(
+			"session-auth",
+			"2026-08-18T20:00:00.000Z",
+			"harrison",
+		);
+		service.startSession("session-auth", "program-auth", "harrison");
+		service.endSession({
+			sessionId: "session-auth",
+			outcome: "completed",
+			replayArtifactId: "artifact-auth-replay",
+			actorId: "harrison",
+		});
+
+		expect(store.eventsSince(-1).map((entry) => entry.event.type)).toEqual([
+			"control.session_created",
+			"control.session_scheduled",
+			"control.session_started",
+			"control.session_ended",
+		]);
 	});
 });
