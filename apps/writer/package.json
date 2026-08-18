@@ -15,6 +15,9 @@
 		"@drive-mode/collaboration-harness": "file:../../../collaboration-harness",
 		"@drivemode/packs-coding": "workspace:*",
 		"@drivemode/packs-demo-ops": "workspace:*",
+		"@drivemode/packs-tasks": "workspace:*",
+		"@drivemode/packs-artifacts": "workspace:*",
+		"@drivemode/packs-direction": "workspace:*",
 		"@modelcontextprotocol/sdk": "^1.17.0",
 		"zod": "^3.25.76"
 	},
