@@ -138,3 +138,24 @@ describe("fleet packs — writer mapping", () => {
 		).toThrow();
 	});
 });
+
+describe("room_invite", () => {
+	test("invite lands as a control.invite event on the log", () => {
+		const store = createWriterStore({ roomId: "default" });
+		const service = createRoomService(store);
+		const result = service.invite({
+			inviterId: "maya",
+			inviteeId: "harrison",
+			title: "Payments refactor",
+			note: "Plan review, ~15 minutes.",
+		});
+		expect(result.event.type).toBe("control.invite");
+		const logged = store.eventsSince(-1).map((entry) => entry.event);
+		const invite = logged.find((event) => event.type === "control.invite");
+		expect(invite).toBeDefined();
+		if (invite?.type === "control.invite") {
+			expect(invite.inviteeId).toBe("harrison");
+			expect(Date.parse(invite.at)).toBeGreaterThan(0);
+		}
+	});
+});

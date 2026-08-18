@@ -464,6 +464,25 @@ export function createRoomService(store: WriterStore) {
 			return result;
 		},
 
+		/** Invite someone to a working session — invited, never "called". */
+		invite(input: {
+			inviterId: string;
+			inviteeId: string;
+			title?: string;
+			note?: string;
+		}) {
+			const event: DriveEvent = {
+				...base(input.inviterId),
+				type: "control.invite",
+				track: "control",
+				inviterId: input.inviterId,
+				inviteeId: input.inviteeId,
+				...(input.title ? { title: input.title } : {}),
+				...(input.note ? { note: input.note } : {}),
+			};
+			return store.append(event);
+		},
+
 		publishConversation(text: string, actorId?: string) {
 			const trimmed = text.trim();
 			if (!trimmed) {
