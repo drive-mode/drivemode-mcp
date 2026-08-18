@@ -14,6 +14,14 @@ type RpcBody = {
 	args?: Record<string, unknown>;
 };
 
+function requiredString(args: Record<string, unknown>, key: string): string {
+	const value = args[key];
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new Error(`${key} is required`);
+	}
+	return value;
+}
+
 async function dispatchRpc(
 	service: RoomService,
 	tool: string,
@@ -65,11 +73,27 @@ async function dispatchRpc(
 			return { participants: snap.room.participants, seq: snap.seq };
 		}
 		case "roster_set_profile": {
+			const runtimeFamily = args.runtimeFamily as
+				| "claude"
+				| "codex"
+				| "cline"
+				| "apple"
+				| "other"
+				| undefined;
+			const executionLocation = args.executionLocation as
+				| "host"
+				| "device"
+				| "managed"
+				| undefined;
 			const result = service.setProfile(
 				String(args.participantId),
 				{
 					displayName: args.displayName as string | undefined,
 					ink: args.ink as string | undefined,
+					runtimeBadge:
+						runtimeFamily && executionLocation
+							? { family: runtimeFamily, executionLocation }
+							: undefined,
 				},
 				args.actorId as string | undefined,
 			);
@@ -124,6 +148,48 @@ async function dispatchRpc(
 			);
 			return { seq: result.seq, room: result.snapshot };
 		}
+		case "title_grant": {
+			const result = service.grantTitle({
+				grantId: requiredString(args, "grantId"),
+				agentId: requiredString(args, "agentId"),
+				title: "presenter",
+				scope: {
+					kind: args.scopeKind as "room" | "session" | "stage",
+					ref: requiredString(args, "scopeRef"),
+				},
+				skillBundleRefs: (args.skillBundleRefs as string[]) ?? [],
+				resourceGrantRefs: (args.resourceGrantRefs as string[]) ?? [],
+				delegatedAgentIds: (args.delegatedAgentIds as string[]) ?? [],
+				permissions: ["stage.present"],
+				expiresAt: requiredString(args, "expiresAt"),
+				actorId: args.actorId as string | undefined,
+			});
+			return { seq: result.seq, event: result.event, room: result.snapshot };
+		}
+		case "title_revoke": {
+			const result = service.revokeTitle({
+				grantId: requiredString(args, "grantId"),
+				reason:
+					(args.reason as "revoked" | "expired" | "policy") ?? "revoked",
+				actorId: args.actorId as string | undefined,
+			});
+			return { seq: result.seq, event: result.event, room: result.snapshot };
+		}
+		case "title_transfer": {
+			const result = service.transferTitle({
+				fromGrantId: requiredString(args, "fromGrantId"),
+				toGrantId: requiredString(args, "toGrantId"),
+				toAgentId: requiredString(args, "toAgentId"),
+				title: "presenter",
+				skillBundleRefs: (args.skillBundleRefs as string[]) ?? [],
+				resourceGrantRefs: (args.resourceGrantRefs as string[]) ?? [],
+				delegatedAgentIds: (args.delegatedAgentIds as string[]) ?? [],
+				permissions: ["stage.present"],
+				expiresAt: requiredString(args, "expiresAt"),
+				actorId: args.actorId as string | undefined,
+			});
+			return { seq: result.seq, event: result.event, room: result.snapshot };
+		}
 		case "mode_set": {
 			const result = service.setMode(
 				args.subMode as "plan" | "act" | "ask" | "debug",
@@ -169,10 +235,48 @@ async function dispatchRpc(
 		}
 		case "room_invite": {
 			const result = service.invite({
-				inviterId: String(args.inviterId),
-				inviteeId: String(args.inviteeId),
+				inviterId: requiredString(args, "inviterId"),
+				inviteeId: requiredString(args, "inviteeId"),
+				sessionId: args.sessionId as string | undefined,
 				title: args.title as string | undefined,
 				note: args.note as string | undefined,
+			});
+			return { seq: result.seq, event: result.event };
+		}
+		case "session_create": {
+			const result = service.createSession({
+				sessionId: requiredString(args, "sessionId"),
+				organizerId: requiredString(args, "organizerId"),
+				title: requiredString(args, "title"),
+				project: requiredString(args, "project"),
+				participantIds: (args.participantIds as string[]) ?? [],
+				agendaTaskIds: (args.agendaTaskIds as string[]) ?? [],
+				note: args.note as string | undefined,
+			});
+			return { seq: result.seq, event: result.event };
+		}
+		case "session_schedule": {
+			const result = service.scheduleSession(
+				requiredString(args, "sessionId"),
+				requiredString(args, "scheduledFor"),
+				args.actorId as string | undefined,
+			);
+			return { seq: result.seq, event: result.event };
+		}
+		case "session_start": {
+			const result = service.startSession(
+				requiredString(args, "sessionId"),
+				requiredString(args, "programId"),
+				args.actorId as string | undefined,
+			);
+			return { seq: result.seq, event: result.event };
+		}
+		case "session_end": {
+			const result = service.endSession({
+				sessionId: requiredString(args, "sessionId"),
+				outcome: args.outcome as "completed" | "cancelled" | undefined,
+				replayArtifactId: args.replayArtifactId as string | undefined,
+				actorId: args.actorId as string | undefined,
 			});
 			return { seq: result.seq, event: result.event };
 		}

@@ -72,6 +72,21 @@ describe("writer acceptance", () => {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({
+				tool: "title_grant",
+				args: {
+					grantId: "grant-drive-partner",
+					agentId: "drive:partner",
+					title: "presenter",
+					scopeKind: "room",
+					scopeRef: "default",
+					expiresAt: new Date(Date.now() + 60_000).toISOString(),
+				},
+			}),
+		});
+		await fetch(`${baseUrl}/rpc`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
 				tool: "stage_set_sharer",
 				args: { participantId: "drive:partner", kind: "agent" },
 			}),
@@ -79,6 +94,7 @@ describe("writer acceptance", () => {
 
 		snap = await fetch(`${baseUrl}/snapshot`).then((r) => r.json());
 		expect(snap.room.participants.length).toBe(2);
+		expect(snap.room.stage.presenterGrantId).toBe("grant-drive-partner");
 
 		const decision = await fetch(`${baseUrl}/rpc`, {
 			method: "POST",
@@ -113,6 +129,67 @@ describe("writer acceptance", () => {
 		}).then((r) => r.json());
 		expect(ack.ok).toBe(true);
 		expect(ack.result.event.type).toBe("control.interrupt_ack");
+
+		const session = await fetch(`${baseUrl}/rpc`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				tool: "session_create",
+				args: {
+					sessionId: "session-auth",
+					organizerId: "drive:human",
+					title: "Auth middleware — working session",
+					project: "Auth middleware",
+					participantIds: ["drive:human", "drive:partner"],
+					agendaTaskIds: ["task-review-gate"],
+					note: "Review the gate together.",
+				},
+			}),
+		}).then((r) => r.json());
+		expect(session.ok).toBe(true);
+		expect(session.result.event.type).toBe("control.session_created");
+
+		const scheduled = await fetch(`${baseUrl}/rpc`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				tool: "session_schedule",
+				args: {
+					sessionId: "session-auth",
+					scheduledFor: "2026-08-18T20:00:00.000Z",
+					actorId: "drive:human",
+				},
+			}),
+		}).then((r) => r.json());
+		expect(scheduled.ok).toBe(true);
+		expect(scheduled.result.event.type).toBe("control.session_scheduled");
+
+		const invite = await fetch(`${baseUrl}/rpc`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				tool: "room_invite",
+				args: {
+					inviterId: "drive:human",
+					inviteeId: "drive:partner",
+					sessionId: "session-auth",
+					title: "Auth middleware — working session",
+					note: "Review the gate together.",
+				},
+			}),
+		}).then((r) => r.json());
+		expect(invite.ok).toBe(true);
+		expect(invite.result.event.sessionId).toBe("session-auth");
+
+		const badSession = await fetch(`${baseUrl}/rpc`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				tool: "session_start",
+				args: { programId: "program-auth" },
+			}),
+		}).then((r) => r.json());
+		expect(badSession.ok).toBe(false);
 
 		await fetch(`${baseUrl}/rpc`, {
 			method: "POST",
