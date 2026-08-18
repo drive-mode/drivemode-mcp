@@ -167,6 +167,15 @@ async function dispatchRpc(
 			);
 			return { seq: result.seq, event: result.event };
 		}
+		case "room_invite": {
+			const result = service.invite({
+				inviterId: String(args.inviterId),
+				inviteeId: String(args.inviteeId),
+				title: args.title as string | undefined,
+				note: args.note as string | undefined,
+			});
+			return { seq: result.seq, event: result.event };
+		}
 		case "events_since": {
 			const sinceSeq = Number(args.sinceSeq ?? 0);
 			const events = service.eventsSince(sinceSeq);

@@ -10,6 +10,9 @@ import {
 } from "@drive-mode/collaboration-harness";
 import { codingPack } from "@drivemode/packs-coding";
 import { demoOpsPack } from "@drivemode/packs-demo-ops";
+import { tasksPack } from "@drivemode/packs-tasks";
+import { artifactsPack } from "@drivemode/packs-artifacts";
+import { directionPack } from "@drivemode/packs-direction";
 import type { WriterStore } from "./store.js";
 
 let eventCounter = 0;
@@ -25,6 +28,9 @@ function nowIso(): string {
 const packs = {
 	[codingPack.id]: codingPack,
 	[demoOpsPack.id]: demoOpsPack,
+	[tasksPack.id]: tasksPack,
+	[artifactsPack.id]: artifactsPack,
+	[directionPack.id]: directionPack,
 } as const;
 
 export type PackId = keyof typeof packs;
@@ -279,7 +285,7 @@ export function createRoomService(store: WriterStore) {
 						return _exhaustive;
 					}
 				}
-			} else {
+			} else if (packId === "demo-ops") {
 				const ops = validated as ReturnType<typeof demoOpsPack.validate>;
 				switch (ops.type) {
 					case "work.ops.alert":
@@ -313,6 +319,126 @@ export function createRoomService(store: WriterStore) {
 						return _exhaustive;
 					}
 				}
+			} else if (packId === "tasks") {
+				const task = validated as ReturnType<typeof tasksPack.validate>;
+				switch (task.type) {
+					case "work.task.created":
+						event = {
+							...base(input.actorId),
+							type: "work.generic",
+							track: "work",
+							packId,
+							kind: task.type,
+							title: task.payload.title,
+							summary:
+								task.payload.summary ??
+								`${task.payload.project} · ${task.payload.state}${task.payload.deps?.length ? ` · ${task.payload.deps.length} dep${task.payload.deps.length === 1 ? "" : "s"}` : ""}`,
+							payload: task.payload,
+						};
+						break;
+					case "work.task.state":
+						event = {
+							...base(input.actorId),
+							type: "work.generic",
+							track: "work",
+							packId,
+							kind: task.type,
+							title: task.payload.title ?? task.payload.taskId,
+							summary: task.payload.summary ?? task.payload.state,
+							payload: task.payload,
+						};
+						break;
+					case "work.task.progress":
+						event = {
+							...base(input.actorId),
+							type: "work.generic",
+							track: "work",
+							packId,
+							kind: task.type,
+							title: task.payload.title ?? task.payload.taskId,
+							summary:
+								task.payload.summary ??
+								`${Math.round(task.payload.progress * 100)}%`,
+							payload: task.payload,
+						};
+						break;
+					default: {
+						const _exhaustive: never = task;
+						return _exhaustive;
+					}
+				}
+			} else if (packId === "artifacts") {
+				const artifact = validated as ReturnType<typeof artifactsPack.validate>;
+				switch (artifact.type) {
+					case "work.artifact.created":
+						event = {
+							...base(input.actorId),
+							type: "work.generic",
+							track: "work",
+							packId,
+							kind: artifact.type,
+							title: artifact.payload.title,
+							summary:
+								artifact.payload.summary ??
+								`${artifact.payload.kind} · ${"permanent" in artifact.payload.life ? "keeps" : `${artifact.payload.life.ttlDays}d ttl`}${artifact.payload.sizeKb != null ? ` · ${artifact.payload.sizeKb} KB` : ""}`,
+							payload: artifact.payload,
+						};
+						break;
+					case "work.artifact.superseded":
+						event = {
+							...base(input.actorId),
+							type: "work.generic",
+							track: "work",
+							packId,
+							kind: artifact.type,
+							title: artifact.payload.title ?? artifact.payload.artifactId,
+							summary:
+								artifact.payload.summary ??
+								`superseded by ${artifact.payload.supersededBy}`,
+							payload: artifact.payload,
+						};
+						break;
+					case "work.artifact.lifecycle":
+						event = {
+							...base(input.actorId),
+							type: "work.generic",
+							track: "work",
+							packId,
+							kind: artifact.type,
+							title: artifact.payload.title ?? artifact.payload.artifactId,
+							summary: artifact.payload.summary ?? artifact.payload.action,
+							payload: artifact.payload,
+						};
+						break;
+					default: {
+						const _exhaustive: never = artifact;
+						return _exhaustive;
+					}
+				}
+			} else if (packId === "direction") {
+				const beat = validated as ReturnType<typeof directionPack.validate>;
+				switch (beat.type) {
+					case "work.direction.beat":
+						event = {
+							...base(input.actorId),
+							type: "work.generic",
+							track: "work",
+							packId,
+							kind: beat.type,
+							title: beat.payload.title,
+							summary:
+								beat.payload.summary ??
+								`${beat.payload.kind} · beat ${beat.payload.beatIndex + 1}`,
+							payload: beat.payload,
+						};
+						break;
+					default: {
+						const _exhaustive: never = beat.type;
+						return _exhaustive;
+					}
+				}
+			} else {
+				throw new Error(`No event mapping for pack: ${packId}`);
 			}
 
 			const result = store.append(event);
@@ -336,6 +462,25 @@ export function createRoomService(store: WriterStore) {
 			}
 
 			return result;
+		},
+
+		/** Invite someone to a working session — invited, never "called". */
+		invite(input: {
+			inviterId: string;
+			inviteeId: string;
+			title?: string;
+			note?: string;
+		}) {
+			const event: DriveEvent = {
+				...base(input.inviterId),
+				type: "control.invite",
+				track: "control",
+				inviterId: input.inviterId,
+				inviteeId: input.inviteeId,
+				...(input.title ? { title: input.title } : {}),
+				...(input.note ? { note: input.note } : {}),
+			};
+			return store.append(event);
 		},
 
 		publishConversation(text: string, actorId?: string) {
