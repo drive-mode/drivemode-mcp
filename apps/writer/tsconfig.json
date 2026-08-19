@@ -4,6 +4,15 @@
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"strict": true,
+		// Resolve harness types from the sibling clone's source so a fresh
+		// checkout typechecks before the harness has ever been built (bun's
+		// file: install copies a snapshot that only carries dist/ when the
+		// harness happened to be built first).
+		"paths": {
+			"@drive-mode/collaboration-harness": [
+				"../../../collaboration-harness/src/index.ts"
+			]
+		},
 		"skipLibCheck": true,
 		"noEmit": true,
 		"types": ["bun"],

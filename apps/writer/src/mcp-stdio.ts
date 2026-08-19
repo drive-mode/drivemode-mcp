@@ -84,6 +84,10 @@ async function main() {
 		reason: z.string().optional(),
 		actorId: z.string().optional(),
 	});
+	tool(server, "room_end", "End the room: clears roster and stage, revokes active titles.", {
+		reason: z.string().optional(),
+		actorId: z.string().optional(),
+	});
 	tool(server, "room_snapshot", "Current room snapshot + seq.", {});
 	tool(server, "roster_list", "List participants.", {});
 	tool(server, "roster_set_profile", "Appearance overlay only.", {
