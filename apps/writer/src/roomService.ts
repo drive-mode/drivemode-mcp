@@ -105,6 +105,19 @@ export function createRoomService(store: WriterStore) {
 			});
 		},
 
+		/**
+		 * End the room. The harness fold clears roster and stage and revokes
+		 * every still-active title grant — coordinator-parity cleanup.
+		 */
+		end(reason?: string, actorId?: string) {
+			return store.append({
+				...base(actorId),
+				type: "control.end",
+				track: "control",
+				reason,
+			});
+		},
+
 		setAddress(addressSet: AddressSet, actorId?: string) {
 			return store.append({
 				...base(actorId),

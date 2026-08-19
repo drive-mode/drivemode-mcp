@@ -84,6 +84,23 @@ export function createMcpServer(service: RoomService): McpServer {
 	);
 
 	server.tool(
+		"room_end",
+		"End the room: clears roster and stage and revokes every active title grant.",
+		{
+			reason: z.string().optional(),
+			actorId: z.string().min(1).optional(),
+		},
+		async (args) => {
+			try {
+				const result = service.end(args.reason, args.actorId);
+				return jsonResult({ seq: result.seq, room: result.snapshot });
+			} catch (error) {
+				return errorResult(error);
+			}
+		},
+	);
+
+	server.tool(
 		"room_snapshot",
 		"Return the current room snapshot, seq, active pack, and in-memory conversation feed.",
 		{},

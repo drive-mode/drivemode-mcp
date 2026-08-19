@@ -293,4 +293,47 @@ describe("Agent Titles writer", () => {
 			result.snapshot.profilesByParticipantId.maya?.runtimeBadge,
 		).toEqual({ family: "claude", executionLocation: "host" });
 	});
+
+	test("leave and room end revoke Presenter authority like the coordinator", () => {
+		const { service } = setup();
+		const expiresAt = new Date(Date.now() + 60_000).toISOString();
+		service.grantTitle({
+			grantId: "grant-maya",
+			agentId: "maya",
+			title: "presenter",
+			scope: { kind: "room", ref: "default" },
+			expiresAt,
+		});
+		service.setSharer({ kind: "agent", participantId: "maya" });
+
+		// The presenter leaving revokes their grant and clears the stage.
+		const left = service.leave("maya", "handoff");
+		expect(left.snapshot.titleGrantsById["grant-maya"]?.revokedAt).toBeDefined();
+		expect(left.snapshot.stage.sharer).toBeNull();
+		expect(left.snapshot.stage.presenterGrantId).toBeNull();
+
+		// A fresh grant works after the revocation…
+		service.grantTitle({
+			grantId: "grant-scout",
+			agentId: "scout",
+			title: "presenter",
+			scope: { kind: "room", ref: "default" },
+			expiresAt,
+		});
+		service.setSharer({ kind: "agent", participantId: "scout" });
+
+		// …and room end clears roster and stage and revokes every grant.
+		const ended = service.end("wrapped");
+		expect(ended.event.type).toBe("control.end");
+		expect(ended.snapshot.participants).toHaveLength(0);
+		expect(ended.snapshot.driveActive).toBe(false);
+		expect(ended.snapshot.stage.sharer).toBeNull();
+		expect(ended.snapshot.stage.presenterGrantId).toBeNull();
+		expect(
+			ended.snapshot.titleGrantsById["grant-scout"]?.revokedAt,
+		).toBeDefined();
+		expect(() =>
+			service.setSharer({ kind: "agent", participantId: "scout" }),
+		).toThrow("requires an active Presenter");
+	});
 });

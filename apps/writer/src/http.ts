@@ -66,6 +66,13 @@ async function dispatchRpc(
 			);
 			return { seq: result.seq, room: result.snapshot };
 		}
+		case "room_end": {
+			const result = service.end(
+				args.reason as string | undefined,
+				args.actorId as string | undefined,
+			);
+			return { seq: result.seq, room: result.snapshot };
+		}
 		case "room_snapshot":
 			return service.snapshot();
 		case "roster_list": {

@@ -24,3 +24,10 @@ Ship the **feeling** of live reacting agents on a shared Spotlight for any MCP h
 ```bash
 bun test
 ```
+
+The harness dependency is `file:../../../collaboration-harness` — a
+side-by-side clone. Bun installs it as a snapshot copy, so after editing the
+sibling harness run `bun install --force` here before `bun test`, or the
+suite runs against the stale copy. Typecheck resolves harness types straight
+from the sibling source (`apps/writer/tsconfig.json` paths) and does not need
+the harness built first.
