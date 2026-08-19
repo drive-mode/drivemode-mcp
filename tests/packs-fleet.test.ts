@@ -295,7 +295,7 @@ describe("Agent Titles writer", () => {
 	});
 
 	test("leave and room end revoke Presenter authority like the coordinator", () => {
-		const { service } = setup();
+		const { store, service } = setup();
 		const expiresAt = new Date(Date.now() + 60_000).toISOString();
 		service.grantTitle({
 			grantId: "grant-maya",
@@ -332,6 +332,30 @@ describe("Agent Titles writer", () => {
 		expect(
 			ended.snapshot.titleGrantsById["grant-scout"]?.revokedAt,
 		).toBeDefined();
+
+		// Repeating room_end is a coordinator-parity no-op, even if a
+		// configuration event lands while the room remains stopped.
+		const eventCountAtEnd = store.eventsSince(-1).length;
+		const again = service.end("wrapped again");
+		expect(again).toEqual(ended);
+		expect(store.eventsSince(-1)).toHaveLength(eventCountAtEnd);
+		service.setAddress({ mode: "agents", agentIds: ["scout"] });
+		const stillEnded = service.end("still wrapped");
+		expect(stillEnded).toEqual(ended);
+		expect(store.eventsSince(-1)).toHaveLength(eventCountAtEnd + 1);
+
+		// A successful join reopens the room and permits one fresh end.
+		service.join({
+			id: "scout",
+			kind: "agent",
+			displayName: "Scout",
+			role: "partner",
+			status: "idle",
+			seatSources: [{ kind: "manual" }],
+		});
+		const endedAfterJoin = service.end("wrapped after rejoin");
+		expect(endedAfterJoin.seq).toBeGreaterThan(ended.seq);
+		expect(endedAfterJoin.snapshot.participants).toHaveLength(0);
 		expect(() =>
 			service.setSharer({ kind: "agent", participantId: "scout" }),
 		).toThrow("requires an active Presenter");

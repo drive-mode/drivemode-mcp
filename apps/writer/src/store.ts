@@ -25,11 +25,17 @@ export type WriterRoomState = {
 export type WriterStore = {
 	readonly roomId: string;
 	getState(): WriterRoomState;
-	append(event: DriveEvent): { seq: number; snapshot: RoomSnapshot; event: DriveEvent };
+	append(event: DriveEvent): WriterAppendResult;
 	eventsSince(sinceSeq: number): LoggedEvent[];
 	setActivePack(packId: string): void;
 	markNarration(atMs: number): void;
 	subscribe(handler: (entry: LoggedEvent, snapshot: RoomSnapshot) => void): () => void;
+};
+
+export type WriterAppendResult = {
+	seq: number;
+	snapshot: RoomSnapshot;
+	event: DriveEvent;
 };
 
 export function createWriterStore(input?: {
@@ -40,6 +46,7 @@ export function createWriterStore(input?: {
 	const listeners = new Set<
 		(entry: LoggedEvent, snapshot: RoomSnapshot) => void
 	>();
+	let endedResult: WriterAppendResult | null = null;
 
 	const state: WriterRoomState = {
 		snapshot: createEmptyRoomSnapshot({
@@ -61,6 +68,12 @@ export function createWriterStore(input?: {
 		append(event) {
 			if (event.roomId !== roomId) {
 				throw new Error(`Event room mismatch: ${event.roomId} !== ${roomId}`);
+			}
+			// Match the Cline coordinator: end is idempotent until a successful
+			// join explicitly reopens the room. Configuration and rejected ops do
+			// not authorize another control.end append.
+			if (event.type === "control.end" && endedResult) {
+				return endedResult;
 			}
 			const seq = state.nextSeq;
 			state.nextSeq += 1;
@@ -89,7 +102,13 @@ export function createWriterStore(input?: {
 			for (const listener of listeners) {
 				listener(entry, state.snapshot);
 			}
-			return { seq, snapshot: state.snapshot, event };
+			const result = { seq, snapshot: state.snapshot, event };
+			if (event.type === "control.join") {
+				endedResult = null;
+			} else if (event.type === "control.end") {
+				endedResult = result;
+			}
+			return result;
 		},
 		eventsSince(sinceSeq) {
 			return state.log.filter((entry) => entry.seq > sinceSeq);
