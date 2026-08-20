@@ -361,3 +361,51 @@ describe("Agent Titles writer", () => {
 		).toThrow("requires an active Presenter");
 	});
 });
+
+describe("event log — sequence numbering", () => {
+	// `eventsSince` is exclusive and both wire callers default `sinceSeq` to 0
+	// (`/rpc events_since` and the `/events` SSE backlog), so a 0-based log hid
+	// the room's very first event from every fresh client.
+	test("a client resuming from the default seq receives the first event", () => {
+		const store = createWriterStore({ roomId: "default" });
+		const service = createRoomService(store);
+
+		service.publishWork({
+			packId: "tasks",
+			type: "work.task.created",
+			payload: {
+				taskId: "t1",
+				title: "First ever event",
+				project: "Auth middleware",
+				state: "running",
+			},
+			narrate: false,
+		});
+
+		expect(store.eventsSince(-1)).toHaveLength(1);
+		// What a wire client actually asks for.
+		expect(store.eventsSince(0)).toHaveLength(1);
+		expect(store.eventsSince(0)[0]?.seq).toBe(1);
+	});
+
+	test("latestSeq distinguishes an empty room from a room with one event", () => {
+		const store = createWriterStore({ roomId: "default" });
+		const service = createRoomService(store);
+
+		expect(service.snapshot().seq).toBe(0);
+
+		service.publishWork({
+			packId: "tasks",
+			type: "work.task.created",
+			payload: {
+				taskId: "t1",
+				title: "First ever event",
+				project: "Auth middleware",
+				state: "running",
+			},
+			narrate: false,
+		});
+
+		expect(service.snapshot().seq).toBe(1);
+	});
+});

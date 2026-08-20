@@ -9,6 +9,15 @@ import {
 export type WriterRoomState = {
 	snapshot: RoomSnapshot;
 	log: LoggedEvent[];
+	/**
+	 * Next sequence number, 1-based.
+	 *
+	 * `eventsSince` is exclusive (`entry.seq > sinceSeq`) and both wire callers
+	 * default `sinceSeq` to 0 — `/rpc events_since` and the `/events` SSE
+	 * backlog — so a 0-based log made the room's first event, normally the
+	 * opening `control.join`, unreachable to every fresh client. It also left
+	 * `latestSeq` reading 0 for both an empty room and a room with one event.
+	 */
 	nextSeq: number;
 	activePackId: string;
 	lastNarrationAtMs: number | null;
@@ -54,7 +63,7 @@ export function createWriterStore(input?: {
 			createdAt: new Date().toISOString(),
 		}),
 		log: [],
-		nextSeq: 0,
+		nextSeq: 1,
 		activePackId: input?.activePackId ?? "coding",
 		lastNarrationAtMs: null,
 		conversationFeed: [],
