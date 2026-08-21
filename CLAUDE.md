@@ -1,0 +1,226 @@
+# CLAUDE.md — drivemode-mcp
+
+Guidance for Claude Code (and other coding agents) working in this repository.
+
+`AGENTS.md` is the short mission/do/don't contract; this file is the longer
+orientation. Read both. Where they disagree, `AGENTS.md` wins.
+
+@AGENTS.md
+
+---
+
+## What this repository is
+
+Drive Mode MCP is the **agent → stage write path**. It turns MCP tool calls from
+any host (Cursor, Claude Desktop, Claude Code, an SDK agent) into typed room
+events, and serves those events to viewers so a human sees a live, shared
+Spotlight of what several agents are doing.
+
+```text
+Agent host(s) --MCP stdio--> mcp-stdio proxy --HTTP /rpc--> Writer (single)
+                                                              |  events + seq
+                                                              v
+                                                          Viewer(s)  (SSE)
+```
+
+All room semantics — schemas, the fold, policies — live in
+[`@drive-mode/collaboration-harness`](https://github.com/drive-mode/collaboration-harness).
+This repo is the **host**: transport, a single-writer store, pack validation, and
+a reference UI. **Do not re-implement `reduceRoom` here.**
+
+### Where it sits in the Drive Mode family
+
+| Repo | Role |
+|---|---|
+| [`collaboration-harness`](https://github.com/drive-mode/collaboration-harness) | Protocol + kernel + `DriveHostPort` (this repo's dependency) |
+| **drivemode-mcp** (this) | MCP writer + reference viewer for any MCP host |
+| [`cline-drivecode`](https://github.com/drive-mode/cline-drivecode) | Cline fork; its hub is a *separate* host of the same protocol |
+| [`drive-ios`](https://github.com/drive-mode/drive-ios) | SwiftUI client; polls this writer's `/rpc events_since` |
+| [`site`](https://github.com/drive-mode/site) | drivemode.ai static site |
+
+`cline-drivecode` is a different product with its own coordinator. **Do not open
+PRs against `cline-drivecode` for work that belongs here**, and do not depend on
+`@cline/*`. The two hosts are kept behaviorally aligned by matching their folds,
+not by sharing code.
+
+## Setup — clone as a sibling
+
+The harness is a `file:` dependency at `../../../collaboration-harness` (relative
+to `apps/writer/`), which resolves to a **sibling of this repo**:
+
+```text
+drive-mode/
+  collaboration-harness/
+  drivemode-mcp/          <- you are here
+```
+
+```bash
+bun install
+```
+
+If you only cloned this repo, either clone the harness next door or swap that
+dependency for a git URL you can authenticate to. `bunfig.toml` also configures
+the `@drive-mode` scope against GitHub Packages (`GITHUB_TOKEN`) for the
+published-package path.
+
+## Commands
+
+```bash
+bun test                        # the suite — tests/ (root-level, uses bun:test)
+bun run typecheck               # every workspace's typecheck
+bun run check                   # typecheck + test + writer build
+bun run writer                  # start the single-room writer (prints live URLs)
+bun run viewer                  # Vite dev server for the reference viewer
+bun run --cwd apps/writer mcp   # MCP stdio proxy -> DRIVEMODE_WRITER_URL
+bun run --cwd apps/viewer typecheck
+```
+
+Typical three-terminal loop:
+
+```bash
+# 1) writer — prints an ephemeral port; read the URL from the terminal
+bun run writer
+
+# 2) viewer
+DRIVEMODE_WRITER_URL=http://127.0.0.1:<printed-port> bun run viewer
+
+# 3) MCP stdio for Cursor / Claude Desktop
+DRIVEMODE_WRITER_URL=http://127.0.0.1:<printed-port> bun run --cwd apps/writer mcp
+```
+
+Sample host configs: `examples/cursor-mcp.json`, `examples/claude-desktop.json`.
+On start the writer also drops a discovery file at `~/.drivemode/writer.json`
+(`url`, `port`, `roomId`, `pid`, `startedAt`).
+
+## Layout
+
+```text
+apps/writer/src/
+  cli.ts          # process entry: build store -> service -> HTTP, write discovery file, print URLs
+  store.ts        # WriterStore — append-only log, seq counter, snapshot via reduceRoom
+  roomService.ts  # the real API surface; pack registry + work-event mapping (largest file)
+  http.ts         # Bun.serve: /health /snapshot /rpc /events (SSE) /api/raise-hand
+  mcpServer.ts    # MCP tool definitions (in-process server)
+  mcp-stdio.ts    # stdio façade that proxies every tool to a running writer's /rpc
+apps/viewer/src/  # React 19 + Vite reference UI (roster + Spotlight + feed)
+packages/packs-*/ # per-domain Zod validators for work payloads
+tests/            # acceptance.test.ts, packs-fleet.test.ts
+examples/         # MCP host configs
+```
+
+### The single writer
+
+`createWriterStore` owns one room (`roomId: "default"`). `append(event)`:
+assigns the next `seq`, pushes a `LoggedEvent`, folds it with the harness's
+`reduceRoom`, and notifies subscribers. `seq` is the resume cursor — clients call
+`events_since` / `GET /events?since=N` and never guess from a wall clock.
+
+`control.end` is **idempotent** until a successful `control.join` reopens the
+room; that mirrors the Cline coordinator so folds agree across hosts. Keep it
+that way — configuration calls and rejected ops must not authorize a second
+`control.end` append.
+
+Conversation bodies live in an in-memory feed capped at 200 entries and are never
+written to the log's durable payloads.
+
+### Packs
+
+A pack is a Zod validator for `work.*` payloads, registered in `roomService.ts`'s
+`packs` map. `stage_publish_work` validates against the active pack (or an
+explicit `packId`) and then maps the result onto harness events. The kernel never
+special-cases a pack — fleet packs ride `work.generic`.
+
+| Pack id | Work types |
+|---|---|
+| `coding` | `work.edit` `work.command` `work.test` `work.plan` `work.decision` `work.generic` |
+| `demo-ops` | `work.ops.alert` `work.ops.runbook_step` |
+| `tasks` | `work.task.created` `work.task.state` `work.task.progress` |
+| `artifacts` | `work.artifact.created` `work.artifact.lifecycle` `work.artifact.superseded` |
+| `direction` | `work.direction.beat` |
+
+Adding a pack: new `packages/packs-<name>/` (mirror an existing one's
+`package.json`/`tsconfig.json`), export `{ id, schemaVersion, validate }`, add it
+to `apps/writer/package.json` dependencies and the `packs` map, add the
+`packId` branch that maps validated payloads to events, and cover it in
+`tests/packs-fleet.test.ts`.
+
+### MCP tools
+
+Grouped by primitive; defined in `mcpServer.ts`, dispatched in `http.ts`, and
+implemented in `roomService.ts`.
+
+| Primitive | Tools |
+|---|---|
+| Presence | `room_join` `room_leave` `room_snapshot` `room_end` |
+| Roster | `roster_list` `roster_set_profile` |
+| Address | `address_set` |
+| Spotlight | `stage_publish_work` `stage_set_sharer` |
+| Titles | `title_grant` `title_transfer` `title_revoke` |
+| Control | `mode_set` `mode_get` |
+| Interrupt | `interrupt_raise` `interrupt_ack` |
+| Narration | `conversation_publish` |
+| Sessions | `room_invite` `session_create` `session_schedule` `session_start` `session_end` |
+| Resume | `events_since` |
+| Packs | `pack_set` `pack_list` |
+
+A new tool touches four places: `mcpServer.ts` (definition + input schema),
+`http.ts` `dispatchRpc` (the `/rpc` case), `roomService.ts` (behavior), and
+`mcp-stdio.ts` (the proxied tool). Miss one and the tool works over HTTP but not
+over stdio, or vice versa.
+
+## Conventions
+
+- **Bun-first**, ESM, TypeScript `strict`. Tabs, double quotes, semicolons.
+- Exhaustive `switch` with a `never` default; imports at the top of the file only.
+- Validate before appending. A pack payload that does not parse must throw
+  rather than reach the log.
+- The writer is the single room truth. MCP is a **façade** (`/rpc` + stdio
+  proxy) — it must not accumulate its own state.
+- Errors cross `/rpc` as `{ ok: false, error }` with HTTP 400; the stdio proxy
+  turns that into an MCP `isError` result. Keep both paths.
+
+## Hard rules
+
+- **One writer per room.** Do not add a second authority or a client-side cache
+  that can disagree with the log.
+- **Tools append events, never HTML/UI blobs.** The stage is typed events; the
+  viewer renders them.
+- **No prompts, tool allowlists, API keys, endpoints, or model IDs through MCP.**
+  Profiles carry appearance plus a sanitized runtime badge only.
+- **Privacy-strict.** Conversation bodies stay in memory; no transcript or audio
+  persistence without an explicit debug flag.
+- **No magic ports as identity.** The HTTP port is ephemeral by default
+  (`DRIVEMODE_HTTP_PORT` overrides). Always use the printed URL or
+  `~/.drivemode/writer.json`. Never hardcode `:7891`.
+- **Do not depend on `@cline/*`** and do not re-implement the harness kernel.
+
+## Gotchas
+
+- **Stale harness copy.** `file:` installs a *snapshot*. After editing the
+  sibling `collaboration-harness`, run `bun install --force` here before
+  `bun test`, or you are testing the old kernel.
+- **Typecheck does not need a built harness.** `apps/writer/tsconfig.json` maps
+  `@drive-mode/collaboration-harness` straight at the sibling's
+  `src/index.ts`, so a fresh checkout typechecks before the harness has ever
+  been built. Tests still use the installed snapshot — the two can disagree,
+  which is exactly the failure mode above.
+- **The writer is in-memory.** It resets on restart; there is no SQLite log.
+  Cross-restart durability is not a v0 goal.
+- `bun test` at the root runs `tests/` only. The viewer has no test suite —
+  verify it with `bun run --cwd apps/viewer typecheck`.
+- README examples show an ephemeral port placeholder; do not copy a literal port
+  into code or docs.
+
+## Non-goals (v0)
+
+Multi-room, auth, a durable SQLite log, voice/WebRTC, and a Cline hub bridge are
+deliberately out of scope. If a change needs one of these, raise it rather than
+sneaking it in.
+
+## Before you push
+
+```bash
+bun install --force   # if the sibling harness changed
+bun run check         # typecheck + test + writer build
+bun run --cwd apps/viewer typecheck
+```
