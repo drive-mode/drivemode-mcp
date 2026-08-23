@@ -2,7 +2,7 @@
 	"name": "drivemode-mcp",
 	"version": "0.1.0",
 	"private": true,
-	"description": "Drive Mode MCP — agent→stage write path + reference viewer over collaboration-harness",
+	"description": "Drive Mode MCP — agent→stage write path + reference viewer over @drive-mode/drive-kernel",
 	"type": "module",
 	"workspaces": ["apps/*", "packages/*"],
 	"scripts": {

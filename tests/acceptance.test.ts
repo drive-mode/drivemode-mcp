@@ -213,7 +213,8 @@ describe("writer acceptance", () => {
 			}),
 		}).then((r) => r.json());
 		expect(ops.ok).toBe(true);
-		expect(ops.result.spotlight.cards.at(-1).packId).toBe("demo-ops");
+		expect(ops.result.event.type).toBe("work.generic");
+		expect(ops.result.event.packId).toBe("demo-ops");
 
 		const bad = await fetch(`${baseUrl}/rpc`, {
 			method: "POST",

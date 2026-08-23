@@ -9,8 +9,8 @@
 		// file: install copies a snapshot that only carries dist/ when the
 		// harness happened to be built first).
 		"paths": {
-			"@drive-mode/collaboration-harness": [
-				"../../../collaboration-harness/src/index.ts"
+			"@drive-mode/drive-kernel": [
+				"../../../cline-drivecode/sdk/dist-bundle/drive-kernel/src/index.ts"
 			]
 		},
 		"skipLibCheck": true,
