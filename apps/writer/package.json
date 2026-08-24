@@ -12,7 +12,7 @@
 		"build": "bun x tsc -p tsconfig.json --noEmit"
 	},
 	"dependencies": {
-		"@drive-mode/collaboration-harness": "file:../../../collaboration-harness",
+		"@drive-mode/drive-kernel": "file:../../../cline-drivecode/sdk/dist-bundle/drive-kernel",
 		"@drivemode/packs-coding": "workspace:*",
 		"@drivemode/packs-demo-ops": "workspace:*",
 		"@drivemode/packs-tasks": "workspace:*",

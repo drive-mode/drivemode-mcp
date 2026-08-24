@@ -2,13 +2,16 @@ import {
 	createEmptyRoomSnapshot,
 	reduceRoom,
 	type DriveEvent,
-	type LoggedEvent,
+	type DriveLogEnvelope,
 	type RoomSnapshot,
-} from "@drive-mode/collaboration-harness";
+} from "@drive-mode/drive-kernel";
+
+/** Room-family envelope. `LoggedEvent` is superseded (ADR-0056). */
+export type WriterLogEntry = Extract<DriveLogEnvelope, { family: "room" }>;
 
 export type WriterRoomState = {
 	snapshot: RoomSnapshot;
-	log: LoggedEvent[];
+	log: WriterLogEntry[];
 	/**
 	 * Next sequence number, 1-based.
 	 *
@@ -35,10 +38,12 @@ export type WriterStore = {
 	readonly roomId: string;
 	getState(): WriterRoomState;
 	append(event: DriveEvent): WriterAppendResult;
-	eventsSince(sinceSeq: number): LoggedEvent[];
+	eventsSince(sinceSeq: number): WriterLogEntry[];
 	setActivePack(packId: string): void;
 	markNarration(atMs: number): void;
-	subscribe(handler: (entry: LoggedEvent, snapshot: RoomSnapshot) => void): () => void;
+	subscribe(
+		handler: (entry: WriterLogEntry, snapshot: RoomSnapshot) => void,
+	): () => void;
 };
 
 export type WriterAppendResult = {
@@ -53,7 +58,7 @@ export function createWriterStore(input?: {
 }): WriterStore {
 	const roomId = input?.roomId ?? "default";
 	const listeners = new Set<
-		(entry: LoggedEvent, snapshot: RoomSnapshot) => void
+		(entry: WriterLogEntry, snapshot: RoomSnapshot) => void
 	>();
 	let endedResult: WriterAppendResult | null = null;
 
@@ -86,7 +91,12 @@ export function createWriterStore(input?: {
 			}
 			const seq = state.nextSeq;
 			state.nextSeq += 1;
-			const entry: LoggedEvent = { seq, event };
+			const entry: WriterLogEntry = {
+				family: "room",
+				seq,
+				roomId,
+				event,
+			};
 			state.log.push(entry);
 			state.snapshot = reduceRoom(state.snapshot, event);
 

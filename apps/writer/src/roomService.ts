@@ -12,7 +12,7 @@ import {
 	type DriveSubMode,
 	type Participant,
 	type StageSharer,
-} from "@drive-mode/collaboration-harness";
+} from "@drive-mode/drive-kernel";
 import { codingPack } from "@drivemode/packs-coding";
 import { demoOpsPack } from "@drivemode/packs-demo-ops";
 import { tasksPack } from "@drivemode/packs-tasks";
@@ -106,7 +106,7 @@ export function createRoomService(store: WriterStore) {
 		},
 
 		/**
-		 * End the room. The harness fold clears roster and stage and revokes
+		 * End the room. The kernel fold clears roster and stage and revokes
 		 * every still-active title grant — coordinator-parity cleanup.
 		 */
 		end(reason?: string, actorId?: string) {
@@ -401,7 +401,6 @@ export function createRoomService(store: WriterStore) {
 							...base(input.actorId),
 							type: "work.edit",
 							track: "work",
-							packId,
 							...coding.payload,
 						};
 						break;
@@ -410,37 +409,37 @@ export function createRoomService(store: WriterStore) {
 							...base(input.actorId),
 							type: "work.command",
 							track: "work",
-							packId,
 							...coding.payload,
 						};
 						break;
 					case "work.test":
 						event = {
 							...base(input.actorId),
-							type: "work.test",
+							type: "work.test_result",
 							track: "work",
-							packId,
 							...coding.payload,
 						};
 						break;
 					case "work.plan":
 						event = {
 							...base(input.actorId),
-							type: "work.plan",
+							type: "work.plan_step",
 							track: "work",
-							packId,
 							...coding.payload,
 						};
 						break;
-					case "work.decision":
+					case "work.decision": {
+						const { title, choice, summary } = coding.payload;
 						event = {
 							...base(input.actorId),
 							type: "work.decision",
 							track: "work",
-							packId,
-							...coding.payload,
+							title,
+							choice,
+							summary,
 						};
 						break;
+					}
 					case "work.generic":
 						event = {
 							...base(input.actorId),

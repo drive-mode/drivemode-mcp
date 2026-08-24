@@ -24,33 +24,31 @@ Agent host(s) --MCP stdio--> mcp-stdio proxy --HTTP /rpc--> Writer (single)
 ```
 
 All room semantics — schemas, the fold, policies — live in
-[`@drive-mode/collaboration-harness`](https://github.com/drive-mode/collaboration-harness).
-This repo is the **host**: transport, a single-writer store, pack validation, and
-a reference UI. **Do not re-implement `reduceRoom` here.**
+generated [`@drive-mode/drive-kernel`](https://github.com/drive-mode/cline-drivecode)
+(`@cline/drive` is the source). This repo is the **host**: transport, a
+single-writer store (no-Hub profile), pack validation, and a reference UI.
+**Do not re-implement `reduceRoom` here.** **Do not import `@cline/*`.**
 
 ### Where it sits in the Drive Mode family
 
 | Repo | Role |
 |---|---|
-| [`collaboration-harness`](https://github.com/drive-mode/collaboration-harness) | Protocol + kernel + `DriveHostPort` (this repo's dependency) |
+| [`cline-drivecode`](https://github.com/drive-mode/cline-drivecode) | Canonical kernel + generated `@drive-mode/drive-kernel` |
 | **drivemode-mcp** (this) | MCP writer + reference viewer for any MCP host |
-| [`cline-drivecode`](https://github.com/drive-mode/cline-drivecode) | Cline fork; its hub is a *separate* host of the same protocol |
 | [`drive-ios`](https://github.com/drive-mode/drive-ios) | SwiftUI client; polls this writer's `/rpc events_since` |
 | [`site`](https://github.com/drive-mode/site) | drivemode.ai static site |
+| `collaboration-harness` | **Archived.** Do not take a `file:` dependency on it. |
 
-`cline-drivecode` is a different product with its own coordinator. **Do not open
-PRs against `cline-drivecode` for work that belongs here**, and do not depend on
-`@cline/*`. The two hosts are kept behaviorally aligned by matching their folds,
-not by sharing code.
+When a Cline Hub is live for the same room, Hub is the writer (ADR-0057). This
+MCP writer is the standalone profile for hosts without Hub.
 
 ## Setup — clone as a sibling
 
-The harness is a `file:` dependency at `../../../collaboration-harness` (relative
-to `apps/writer/`), which resolves to a **sibling of this repo**:
+Generate the kernel bundle from a sibling `cline-drivecode` clone:
 
 ```text
 drive-mode/
-  collaboration-harness/
+  cline-drivecode/        # bun run build:sdk && bun run build:drive-kernel
   drivemode-mcp/          <- you are here
 ```
 
@@ -58,10 +56,9 @@ drive-mode/
 bun install
 ```
 
-If you only cloned this repo, either clone the harness next door or swap that
-dependency for a git URL you can authenticate to. `bunfig.toml` also configures
-the `@drive-mode` scope against GitHub Packages (`GITHUB_TOKEN`) for the
-published-package path.
+The writer `file:` dependency is `../../../cline-drivecode/sdk/dist-bundle/drive-kernel`.
+`bunfig.toml` also configures the `@drive-mode` scope against GitHub Packages
+(`GITHUB_TOKEN`) for the published-package path.
 
 ## Commands
 
@@ -111,8 +108,8 @@ examples/         # MCP host configs
 ### The single writer
 
 `createWriterStore` owns one room (`roomId: "default"`). `append(event)`:
-assigns the next `seq`, pushes a `LoggedEvent`, folds it with the harness's
-`reduceRoom`, and notifies subscribers. `seq` is the resume cursor — clients call
+assigns the next `seq`, pushes a room `DriveLogEnvelope`, folds it with the
+kernel's `reduceRoom`, and notifies subscribers. `seq` is the resume cursor — clients call
 `events_since` / `GET /events?since=N` and never guess from a wall clock.
 
 `control.end` is **idempotent** until a successful `control.join` reopens the
@@ -127,8 +124,9 @@ written to the log's durable payloads.
 
 A pack is a Zod validator for `work.*` payloads, registered in `roomService.ts`'s
 `packs` map. `stage_publish_work` validates against the active pack (or an
-explicit `packId`) and then maps the result onto harness events. The kernel never
-special-cases a pack — fleet packs ride `work.generic`.
+explicit `packId`) and then maps the result onto kernel events. Coding pack
+`work.plan` / `work.test` become `work.plan_step` / `work.test_result`. The
+kernel never special-cases a pack — fleet packs ride `work.generic`.
 
 | Pack id | Work types |
 |---|---|
@@ -192,18 +190,16 @@ over stdio, or vice versa.
 - **No magic ports as identity.** The HTTP port is ephemeral by default
   (`DRIVEMODE_HTTP_PORT` overrides). Always use the printed URL or
   `~/.drivemode/writer.json`. Never hardcode `:7891`.
-- **Do not depend on `@cline/*`** and do not re-implement the harness kernel.
+- **Do not depend on `@cline/*`** and do not re-implement `reduceRoom`.
 
 ## Gotchas
 
-- **Stale harness copy.** `file:` installs a *snapshot*. After editing the
-  sibling `collaboration-harness`, run `bun install --force` here before
-  `bun test`, or you are testing the old kernel.
-- **Typecheck does not need a built harness.** `apps/writer/tsconfig.json` maps
-  `@drive-mode/collaboration-harness` straight at the sibling's
-  `src/index.ts`, so a fresh checkout typechecks before the harness has ever
-  been built. Tests still use the installed snapshot — the two can disagree,
-  which is exactly the failure mode above.
+- **Stale kernel copy.** `file:` installs a *snapshot*. After regenerating
+  `cline-drivecode/sdk/dist-bundle/drive-kernel`, run `bun install --force` here
+  before `bun test`.
+- **Typecheck reads generated source.** `apps/writer/tsconfig.json` maps
+  `@drive-mode/drive-kernel` at the sibling bundle's `src/index.ts`. Generate
+  the bundle before typecheck.
 - **The writer is in-memory.** It resets on restart; there is no SQLite log.
   Cross-restart durability is not a v0 goal.
 - `bun test` at the root runs `tests/` only. The viewer has no test suite —

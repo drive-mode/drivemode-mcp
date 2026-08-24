@@ -1,6 +1,6 @@
 # Drive Mode MCP
 
-**Agent → stage write path** for live multi-agent presence with visuals. Built on [`@drive-mode/collaboration-harness`](https://github.com/drive-mode/collaboration-harness).
+**Agent → stage write path** for live multi-agent presence with visuals. Built on generated [`@drive-mode/drive-kernel`](https://github.com/drive-mode/cline-drivecode) (canonical fold is `@cline/drive`).
 
 Five primitives: **presence · spotlight · narration · interrupt · address**.
 
@@ -12,19 +12,20 @@ Agent host(s) --MCP tools--> Writer (single) --events/seq--> Viewer(s)
 
 ## Install
 
-Clone **as a sibling** of `collaboration-harness` (file dependency):
+Clone **as a sibling** of `cline-drivecode` and generate the kernel bundle:
 
 ```bash
 drive-mode/
-  collaboration-harness/
-  drivemode-mcp/   ← you are here
+  cline-drivecode/   # bun run build:sdk && bun run build:drive-kernel
+  drivemode-mcp/     ← you are here
 ```
 
 ```bash
 bun install
 ```
 
-If you only clone this repo, either clone the harness next door or replace the `file:../../../collaboration-harness` dependency with a git URL you can authenticate to.
+The writer depends on `file:../../../cline-drivecode/sdk/dist-bundle/drive-kernel`.
+Published coordinate (GitHub Packages): `@drive-mode/drive-kernel`. Do not import `@cline/*`.
 # Terminal 1 — single room writer (prints live URLs; port is ephemeral)
 bun run writer
 
