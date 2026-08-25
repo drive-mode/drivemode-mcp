@@ -116,6 +116,12 @@ export function App() {
 
 				es = new EventSource(`${base}/events?since=${snap.seq}`);
 				es.onmessage = (msg) => {
+					// EventSource reconnects on its own. A message arriving is
+					// proof the stream is healthy again, so clear the error the
+					// previous drop left on screen — otherwise a recovered
+					// viewer keeps claiming it is disconnected.
+					setConnected(true);
+					setError(null);
 					const payload = JSON.parse(msg.data) as SsePayload;
 					if (payload.type === "hello" && payload.snapshot) {
 						setRoom(payload.snapshot);

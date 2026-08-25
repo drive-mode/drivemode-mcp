@@ -9,6 +9,17 @@ export type HttpWriterOptions = {
 	host?: string;
 };
 
+/**
+ * Permissive CORS for a loopback, unauthenticated, single-room writer. See the
+ * note in `fetch` — this exists so the bundled viewer works, not to widen the
+ * writer's reach.
+ */
+const CORS_HEADERS = {
+	"Access-Control-Allow-Origin": "*",
+	"Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+	"Access-Control-Allow-Headers": "Content-Type",
+} as const;
+
 type RpcBody = {
 	tool: string;
 	args?: Record<string, unknown>;
@@ -311,101 +322,165 @@ export async function startHttpWriter(
 	const preferred = options.port ?? Number(process.env.DRIVEMODE_HTTP_PORT ?? 0);
 	const host = options.host ?? "127.0.0.1";
 
+	/**
+	 * The request handler proper. Every response it returns is passed through
+	 * `withCors` below, so no individual branch has to remember the headers.
+	 */
+	const handle = async (req: Request): Promise<Response> => {
+		const url = new URL(req.url);
+
+		// The reference viewer is a browser app that is pointed at this
+		// writer by URL (`?writer=…`), so it is always a cross-origin
+		// caller and every fetch is preflighted. Without these headers
+		// the viewer cannot read its own writer at all. The writer binds
+		// to loopback, owns one room and has no auth by design (v0
+		// non-goal), so there is no credential here for an allow-all
+		// origin to leak — but it also never reflects credentials:
+		// responses are same-origin-readable data only.
+		if (req.method === "OPTIONS") {
+			return new Response(null, { status: 204, headers: CORS_HEADERS });
+		}
+
+		if (url.pathname === "/health") {
+			return Response.json({ ok: true, roomId: options.store.roomId });
+		}
+
+		if (url.pathname === "/snapshot") {
+			return Response.json(options.service.snapshot());
+		}
+
+		if (url.pathname === "/rpc" && req.method === "POST") {
+			try {
+				const body = (await req.json()) as RpcBody;
+				const result = await dispatchRpc(
+					options.service,
+					body.tool,
+					body.args ?? {},
+				);
+				return Response.json({ ok: true, result });
+			} catch (error) {
+				const message =
+					error instanceof Error ? error.message : String(error);
+				return Response.json(
+					{ ok: false, error: message },
+					{ status: 400 },
+				);
+			}
+		}
+
+		if (url.pathname === "/events") {
+			const sinceSeq = Number(url.searchParams.get("since") ?? "0");
+			const backlog = options.service.eventsSince(
+				Number.isFinite(sinceSeq) ? sinceSeq : 0,
+			);
+
+			let unsubscribe: (() => void) | null = null;
+			let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+			/**
+			 * One teardown for the stream, idempotent, reachable from every
+			 * place that can notice the consumer is gone. Clearing only the
+			 * heartbeat would leave the store subscription registered, and the
+			 * next append would then write to a closed stream.
+			 */
+			const teardown = () => {
+				unsubscribe?.();
+				unsubscribe = null;
+				if (heartbeat) {
+					clearInterval(heartbeat);
+					heartbeat = null;
+				}
+			};
+
+			const stream = new ReadableStream({
+				start(controller) {
+					const encoder = new TextEncoder();
+					/** Writes to a closed stream throw; that means the consumer left. */
+					const write = (chunk: string) => {
+						try {
+							controller.enqueue(encoder.encode(chunk));
+							return true;
+						} catch {
+							teardown();
+							return false;
+						}
+					};
+					const send = (payload: unknown) =>
+						write(`data: ${JSON.stringify(payload)}\n\n`);
+
+					// A room can be quiet for minutes at a time, and the server
+					// closes a connection that carries nothing — so without this
+					// the viewer loses its stream about ten seconds after the
+					// last event and then reconnects in a loop. A comment line
+					// keeps it warm, and EventSource ignores comments, so it
+					// never reaches `onmessage` and cannot be read as an event.
+					heartbeat = setInterval(() => {
+						write(": ping\n\n");
+					}, 5_000);
+					// `snapshot` means one thing on this stream: the
+					// RoomSnapshot, exactly as the per-event messages
+					// below deliver it. Sending the /snapshot envelope
+					// here instead would hand the first message a
+					// different shape than every message after it.
+					send({
+						type: "hello",
+						roomId: options.store.roomId,
+						snapshot: options.service.snapshot().room,
+						backlog,
+					});
+					unsubscribe = options.store.subscribe((entry, snapshot) => {
+						send({ type: "event", entry, snapshot });
+					});
+				},
+				cancel() {
+					teardown();
+				},
+			});
+
+			return new Response(stream, {
+				headers: {
+					"Content-Type": "text/event-stream",
+					"Cache-Control": "no-cache",
+					Connection: "keep-alive",
+					"Access-Control-Allow-Origin": "*",
+				},
+			});
+		}
+
+		if (url.pathname === "/api/raise-hand" && req.method === "POST") {
+			const body = (await req.json()) as {
+				participantId?: string;
+				raised?: boolean;
+			};
+			const participantId = body.participantId ?? "drive:human";
+			const raised = body.raised ?? true;
+			const result = options.service.raiseHand(participantId, raised);
+			return Response.json({ seq: result.seq, room: result.snapshot });
+		}
+
+		if (url.pathname === "/" || url.pathname === "/index.html") {
+			return new Response(
+				`drivemode writer · room=${options.store.roomId}\n` +
+					`GET /snapshot  GET /events?since=0  POST /rpc  POST /api/raise-hand\n`,
+				{ headers: { "Content-Type": "text/plain" } },
+			);
+		}
+
+		return new Response("Not found", { status: 404 });
+	};
+
+	const withCors = (res: Response): Response => {
+		for (const [key, value] of Object.entries(CORS_HEADERS)) {
+			res.headers.set(key, value);
+		}
+		return res;
+	};
+
 	const tryListen = (port: number) =>
 		Bun.serve({
 			hostname: host,
 			port,
-			async fetch(req) {
-				const url = new URL(req.url);
-
-				if (url.pathname === "/health") {
-					return Response.json({ ok: true, roomId: options.store.roomId });
-				}
-
-				if (url.pathname === "/snapshot") {
-					return Response.json(options.service.snapshot());
-				}
-
-				if (url.pathname === "/rpc" && req.method === "POST") {
-					try {
-						const body = (await req.json()) as RpcBody;
-						const result = await dispatchRpc(
-							options.service,
-							body.tool,
-							body.args ?? {},
-						);
-						return Response.json({ ok: true, result });
-					} catch (error) {
-						const message =
-							error instanceof Error ? error.message : String(error);
-						return Response.json(
-							{ ok: false, error: message },
-							{ status: 400 },
-						);
-					}
-				}
-
-				if (url.pathname === "/events") {
-					const sinceSeq = Number(url.searchParams.get("since") ?? "0");
-					const backlog = options.service.eventsSince(
-						Number.isFinite(sinceSeq) ? sinceSeq : 0,
-					);
-
-					let unsubscribe: (() => void) | null = null;
-					const stream = new ReadableStream({
-						start(controller) {
-							const encoder = new TextEncoder();
-							const send = (payload: unknown) => {
-								controller.enqueue(
-									encoder.encode(`data: ${JSON.stringify(payload)}\n\n`),
-								);
-							};
-							send({
-								type: "hello",
-								roomId: options.store.roomId,
-								snapshot: options.service.snapshot(),
-								backlog,
-							});
-							unsubscribe = options.store.subscribe((entry, snapshot) => {
-								send({ type: "event", entry, snapshot });
-							});
-						},
-						cancel() {
-							unsubscribe?.();
-						},
-					});
-
-					return new Response(stream, {
-						headers: {
-							"Content-Type": "text/event-stream",
-							"Cache-Control": "no-cache",
-							Connection: "keep-alive",
-							"Access-Control-Allow-Origin": "*",
-						},
-					});
-				}
-
-				if (url.pathname === "/api/raise-hand" && req.method === "POST") {
-					const body = (await req.json()) as {
-						participantId?: string;
-						raised?: boolean;
-					};
-					const participantId = body.participantId ?? "drive:human";
-					const raised = body.raised ?? true;
-					const result = options.service.raiseHand(participantId, raised);
-					return Response.json({ seq: result.seq, room: result.snapshot });
-				}
-
-				if (url.pathname === "/" || url.pathname === "/index.html") {
-					return new Response(
-						`drivemode writer · room=${options.store.roomId}\n` +
-							`GET /snapshot  GET /events?since=0  POST /rpc  POST /api/raise-hand\n`,
-						{ headers: { "Content-Type": "text/plain" } },
-					);
-				}
-
-				return new Response("Not found", { status: 404 });
-			},
+			fetch: async (req) => withCors(await handle(req)),
 		});
 
 	let server: { port: number | undefined; stop: (closeActive?: boolean) => void };
