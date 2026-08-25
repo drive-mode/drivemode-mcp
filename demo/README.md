@@ -36,102 +36,91 @@ Swift app builds.
 
 ## Run it
 
-Three processes. Read every URL from its own output — never hardcode a port.
-
-```bash
-# 1. the writer (in-memory, single room)
-DRIVEMODE_HTTP_PORT=4600 bun run writer
-
-# 2. the reference viewer — give it a port of its own
-bun run --cwd apps/viewer dev -- --port 5199 --strictPort
-
-# 3. the demo surfaces + a same-origin /rpc proxy
-node demo/serve.mjs       # http://127.0.0.1:8080/ios/  and  /stage/
-```
-
-Then play the scenario:
-
-```bash
-node demo/run-scenario.mjs                  # the whole story
-node demo/run-scenario.mjs --list           # the eleven chapter ids
-node demo/run-scenario.mjs --chapter tests  # replay through `tests`, then stop
-DEMO_PACE_MS=15 node demo/run-scenario.mjs  # as fast as the writer will take it
-```
-
-The phone supports the same swipe-between-surfaces gesture the app does, so the
-recording can show it: a horizontal drag past ~55px moves one surface, and a
-drag that is more vertical than horizontal is ignored so it cannot fire while a
-long list is being scrolled.
-
-`--chapter` replays **from the start through** the chapter you name — it does
-not run that chapter alone. Chapters are not independent: `tests` transfers a
-Presenter grant that `handoff` created, `handoff` transfers one that `presenter`
-created, and every work event needs the roster `lobby` joined. Running a later
-chapter against an empty room fails on the first call that references a grant or
-participant nobody has created yet.
-
-Always start from a fresh writer. Replaying onto a writer that already holds a
-completed run reuses spent grant ids, and the Presenter guard correctly rejects
-them.
-
-Point the viewer at the writer with `?writer=http://127.0.0.1:4600` — its
-built-in default is port 8787, which the Cline hub dashboard also wants.
-
-**Start the hub before the viewer, and pin the viewer's port.** Both are Vite
-apps that prefer 5173. The hub announces its webview port *before* binding it,
-so if the viewer wins that bind the hub falls back to another port and keeps
-proxying the one it announced — serving the viewer's bundle inside the hub's
-own shell. Right title, right chrome, wrong app. That cost one recording.
-
-## Record the video
-
 Recording needs **Playwright** and a **full ffmpeg** — Playwright bundles a
-VP8-only build that cannot write MP4. Neither is a dependency of this repo;
-install them where you record:
+VP8-only build that cannot write MP4 — plus the generated `drive-kernel` bundle
+from a sibling `cline-drivecode` clone. `doctor` checks all of it and prints the
+fix for whatever is missing, so start there rather than reading a setup list.
+
+One entry point. It knows the start order, the pinned ports, the identity
+checks and the clean-writer reset, so you do not have to.
 
 ```bash
-npm i -g playwright && npx playwright install chromium
-apt-get install -y ffmpeg          # or your platform's equivalent
+node demo/demo.mjs doctor    # what is missing before you can record
+node demo/demo.mjs up        # start the stack, in order, verified
+node demo/demo.mjs status    # what is actually running right now
+node demo/demo.mjs play      # run the scenario against the live stack
+node demo/demo.mjs record    # up (if needed) -> film -> encode -> MP4
+node demo/demo.mjs down      # stop everything it started
 ```
+
+Options: `--scenario <path>`, `--chapter <id>`, `--out <dir>`, `--pace <ms>`,
+`--no-hub`, `--keep-writer`.
+
+`play` and `record` restart the writer first, so they are repeatable rather than
+once-per-boot: the writer is in-memory and the scenario reuses fixed grant ids,
+so replaying onto a writer that already holds a run makes the Presenter guard
+reject the handoff — correctly. `--keep-writer` opts out when you want to stack
+a second story onto a live room.
+
+### What `up` is protecting you from
+
+Three traps, each of which cost a recording before it was automated:
+
+- **The hub starts first.** It announces its webview port *before* binding it,
+  so if something else wins that bind the hub keeps proxying the port it
+  announced and serves the other app's bundle inside its own shell — right
+  title, right chrome, wrong app.
+- **The viewer gets a pinned port** well away from 5173 for the same reason.
+- **Both browser surfaces are identity-checked by page title** before anything
+  is filmed. A three-minute recording of the wrong app looks completely fine.
+
+`down` only stops what `demo.mjs` started. If a previous hand-rolled run left
+something holding a port, `doctor` will not see it but the hub will say
+`preferred port ... is busy` — free it yourself (`fuser -n tcp 5173`) and run
+`up` again.
+
+Running the pieces by hand is still possible — `serve.mjs`, `run-scenario.mjs`
+and `record.mjs` all work standalone, and `make-video.sh` re-encodes segments
+that are already filmed — but the ordering rules above are then yours to
+remember.
+
+## Writing a new demo
+
+A scenario is a plain module. To tell a different story, copy `scenario.mjs`,
+edit it, and point the rig at it:
 
 ```bash
-node demo/record.mjs      # restarts the writer, records both segments
+node demo/demo.mjs record --scenario ./my-story.mjs
 ```
 
-It writes two WebM files. `ffmpeg` (a full build, not Playwright's VP8-only
-one) turns them into a single MP4 — see `make-video.sh`.
+It must export:
 
-Pass the URLs the apps actually printed:
+```js
+export const chapters = [
+  {
+    id: "lobby",                  // stable id; --chapter refers to it
+    title: "The room opens",      // the caption headline
+    blurb: "One line of why...",  // the caption body
+    async run() { /* MCP calls */ },
+  },
+];
 
-```bash
-DEMO_VIEWER_URL=http://127.0.0.1:5173/ \
-DEMO_HUB_URL=http://127.0.0.1:8787/ \
-node demo/record.mjs
+// Optional: which phone surface each chapter is about. The recorder presses
+// the phone's tab bar to bring it up before the chapter runs.
+export const phoneSurface = { lobby: "agents" };
 ```
 
-The recorder checks both are the app it expects before filming, by reading the
-page title. Vite takes whatever port is free, so "the viewer" and "the hub
-webview" trade places between runs — this pane has already filmed the hub
-dashboard once while captioned as the reference viewer. A three-minute
-recording of the wrong app looks completely fine, so the check is worth the
-second it costs.
+Rules worth knowing before you write one:
 
-### Seeing the input
-
-Screen recordings do not capture the OS cursor, and a browser draws nothing at
-all for touch — so without help a viewer sees panels changing with no idea what
-was pressed. `pointer.js` draws the input on top of the page: an arrow for the
-desktop panes, an Apple-style touch ring for the phone, a ripple on press, and a
-fading trail on swipe. The stage loads it with a script tag; the recorder
-injects the same file into the hub dashboard, which the demo does not own. It
-lives in a shadow root and never takes pointer events, so it cannot restyle or
-intercept anything on the page underneath.
-
-It is a *readout*, not a stand-in. `pointer-driver.mjs` moves the overlay and
-dispatches the real Playwright input to the same coordinates in one call, so
-every tap, click and swipe you see on video actually happened — the phone's
-surfaces are reached by pressing its tab bar and by swiping the deck, not by
-calling into the page.
+- **Chapters are ordered and cumulative.** Later ones act on room state earlier
+  ones built. That is why `--chapter` replays a prefix rather than one chapter.
+- **Everything goes through `rpc()`** from `rpc.mjs` — the same `/rpc` surface an
+  MCP host uses. If it does not work there, it does not belong in a demo.
+- **The writer enforces its own rules.** An agent cannot take the stage without
+  an active Presenter grant, and pack payloads are validated before they are
+  appended. A scenario that cheats simply fails, which is the point.
+- **Pace with `beat()`**, not fixed sleeps, so `--pace` still controls the whole
+  story.
 
 ## The scenario
 

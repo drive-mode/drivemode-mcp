@@ -620,6 +620,28 @@ export const chapters = [
 	},
 ];
 
+/**
+ * Which phone surface each chapter is really about.
+ *
+ * This belongs to the story, not the rig: the recorder presses the phone's tab
+ * bar to bring the named surface up before the chapter runs, so a chapter about
+ * artifacts is watched on the Artifacts surface. A scenario that omits an id
+ * simply leaves the phone where it was.
+ */
+export const phoneSurface = {
+	lobby: "agents",
+	session: "activity",
+	presenter: "spotlight",
+	taskgraph: "work",
+	coding: "spotlight",
+	interrupt: "activity",
+	handoff: "spotlight",
+	tests: "spotlight",
+	artifacts: "artifacts",
+	ops: "spotlight",
+	close: "activity",
+};
+
 export async function runAll({ onChapter } = {}) {
 	for (const chapter of chapters) {
 		if (onChapter) await onChapter(chapter);

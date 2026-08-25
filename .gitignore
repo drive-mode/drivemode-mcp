@@ -7,3 +7,6 @@ dist/
 coverage/
 apps/viewer/dist/
 apps/writer/dist/
+
+# The demo stack records which services it started, per machine.
+demo/.stack.json

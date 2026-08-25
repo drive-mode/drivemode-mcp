@@ -9,23 +9,20 @@
  *   2. "The hub dashboard" — a tour of the Drive surfaces in the Cline hub.
  *
  * Nothing is scripted into the UIs. The recorder only makes MCP calls and
- * changes which tab is on screen; every value that appears is the clients
- * folding the writer's log.
+ * presses real controls; every value that appears is the clients folding the
+ * writer's log.
+ *
+ * The scenario is a parameter, not a hardcoded import — `demo.mjs record
+ * --scenario ./my-story.mjs` films a different story with the same rig. See
+ * "Writing a new demo" in the README for the module contract.
  */
 
-import { spawn } from "node:child_process";
 import { mkdirSync, readdirSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { chromium } from "playwright";
 
 import { Pointer } from "./pointer-driver.mjs";
-import { chapters } from "./scenario.mjs";
-import { startWriter } from "./writer-lifecycle.mjs";
 
-const OUT = process.env.DEMO_OUT ?? "/tmp/drivemode-demo/recording";
-const VIEWER = process.env.DEMO_VIEWER_URL ?? "http://127.0.0.1:5173/";
-const STAGE = process.env.DEMO_STAGE_URL ?? "http://127.0.0.1:8080/stage/";
-const HUB = process.env.DEMO_HUB_URL ?? "http://127.0.0.1:8787/";
 const SIZE = { width: 1600, height: 900 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -56,22 +53,9 @@ async function expectApp(url, title, label) {
 	}
 }
 
-/** Which phone surface each chapter is really about. */
-const PHONE_SURFACE = {
-	lobby: "agents",
-	session: "activity",
-	presenter: "spotlight",
-	taskgraph: "work",
-	coding: "spotlight",
-	interrupt: "activity",
-	handoff: "spotlight",
-	tests: "spotlight",
-	artifacts: "artifacts",
-	ops: "spotlight",
-	close: "activity",
-};
 
-async function recordScenario() {
+async function recordScenario(ctxOpts) {
+	const { OUT, VIEWER, STAGE, WRITER, chapters, phoneSurface } = ctxOpts;
 	const browser = await chromium.launch();
 	const ctx = await browser.newContext({
 		viewport: SIZE,
@@ -79,7 +63,7 @@ async function recordScenario() {
 	});
 	const page = await ctx.newPage();
 
-	const stageUrl = `${STAGE}?viewer=${encodeURIComponent(`${VIEWER}?writer=http://127.0.0.1:4600`)}`;
+	const stageUrl = `${STAGE}?viewer=${encodeURIComponent(`${VIEWER}?writer=${WRITER}`)}`;
 	// `networkidle` never fires here — the viewer holds an SSE stream open.
 	await page.goto(stageUrl, { waitUntil: "load" });
 	await sleep(4000);
@@ -109,7 +93,7 @@ async function recordScenario() {
 			([num, title, blurb]) => window.setChapter(num, title, blurb),
 			[`chapter ${n} of ${chapters.length}`, chapter.title, chapter.blurb],
 		);
-		const surface = PHONE_SURFACE[chapter.id];
+		const surface = phoneSurface[chapter.id];
 		if (surface) await tapTab(surface);
 		await sleep(1200);
 		await chapter.run();
@@ -148,7 +132,8 @@ async function recordScenario() {
 	await browser.close();
 }
 
-async function recordHub() {
+async function recordHub(ctxOpts) {
+	const { OUT, HUB } = ctxOpts;
 	const browser = await chromium.launch();
 	const ctx = await browser.newContext({
 		viewport: SIZE,
@@ -195,10 +180,10 @@ async function recordHub() {
 	await browser.close();
 }
 
-function collect(dir, name) {
+function collect(dir, name, out) {
 	const files = readdirSync(dir).filter((f) => f.endsWith(".webm"));
 	if (!files.length) throw new Error(`no video written to ${dir}`);
-	const target = join(OUT, name);
+	const target = join(out, name);
 	renameSync(join(dir, files[0]), target);
 	rmSync(dir, { recursive: true, force: true });
 	return target;
@@ -206,22 +191,54 @@ function collect(dir, name) {
 
 // ------------------------------------------------------------------ main
 
-rmSync(OUT, { recursive: true, force: true });
-mkdirSync(OUT, { recursive: true });
+/**
+ * Film the demo. Returns the WebM segments in play order.
+ *
+ * The stack must already be up — `demo.mjs` owns that, so the recorder never
+ * has to guess a port. It still identity-checks what it is pointed at, because
+ * the cost of getting that wrong is three minutes of footage of the wrong app.
+ */
+export async function recordDemo({
+	out,
+	viewer,
+	stage,
+	hub,
+	writer,
+	chapters,
+	phoneSurface = {},
+	onProgress = () => {},
+}) {
+	if (!chapters?.length) throw new Error("recordDemo: the scenario has no chapters");
 
-process.stdout.write("· checking the surfaces are the ones we think\n");
-await expectApp(VIEWER, "Drive Mode", "reference viewer");
-await expectApp(HUB, "Cline Drive", "hub dashboard");
+	rmSync(out, { recursive: true, force: true });
+	mkdirSync(out, { recursive: true });
 
-process.stdout.write("· starting a clean writer\n");
-await startWriter(4600);
+	onProgress("checking the surfaces are the ones we think");
+	await expectApp(viewer, "Drive Mode", "reference viewer");
+	if (hub) await expectApp(hub, "Cline Drive", "hub dashboard");
 
-process.stdout.write("· recording segment 1 — two clients, one writer\n");
-await recordScenario();
-const scenarioVideo = collect(join(OUT, "raw-scenario"), "01-clients.webm");
+	const ctxOpts = {
+		OUT: out,
+		VIEWER: viewer,
+		STAGE: stage,
+		HUB: hub,
+		WRITER: writer,
+		chapters,
+		phoneSurface,
+	};
+	const segments = [];
 
-process.stdout.write("· recording segment 2 — the hub dashboard\n");
-await recordHub();
-const hubVideo = collect(join(OUT, "raw-hub"), "02-hub.webm");
+	onProgress("recording segment 1 — two clients, one writer");
+	await recordScenario(ctxOpts);
+	segments.push(collect(join(out, "raw-scenario"), "01-clients.webm", out));
 
-process.stdout.write(`\n✓ ${scenarioVideo}\n✓ ${hubVideo}\n`);
+	if (hub) {
+		onProgress("recording segment 2 — the hub dashboard");
+		await recordHub(ctxOpts);
+		segments.push(collect(join(out, "raw-hub"), "02-hub.webm", out));
+	} else {
+		onProgress("no hub URL — recording the clients segment only");
+	}
+
+	return segments;
+}
