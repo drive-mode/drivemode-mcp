@@ -166,9 +166,15 @@ async function recordHub() {
 	await pointer.mode("mouse");
 
 	for (const nav of ["Rooms", "Artifacts", "Tasks", "Status Hub", "Analytics"]) {
-		let link = page.getByRole("link", { name: nav, exact: true }).first();
+		// The sidebar entries are <button>s inside <nav>, not links — scope to
+		// the nav so a matching word elsewhere on the page cannot win.
+		const link = page
+			.locator("aside nav button")
+			.filter({ hasText: new RegExp(`^\\s*${nav}\\s*$`) })
+			.first();
 		if (!(await link.count().catch(() => 0))) {
-			link = page.getByText(nav, { exact: true }).first();
+			log(`hub nav "${nav}" not present — skipping`);
+			continue;
 		}
 		// Move the cursor to the nav item and press it, so the recording shows
 		// what was clicked rather than a page that changes on its own.

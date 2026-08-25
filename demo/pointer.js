@@ -17,7 +17,7 @@
  * events, so it cannot restyle or intercept anything on the host page.
  */
 
-(() => {
+const installDemoPointer = () => {
 	if (window.__demoPointer) return;
 
 	const host = document.createElement("div");
@@ -169,4 +169,16 @@
 	};
 
 	window.__demoPointer = api;
-})();
+};
+
+// The recorder injects this file with `addInitScript`, which runs before the
+// document exists — `document.documentElement` is null at that point, and an
+// unguarded install throws and leaves the page with no overlay at all. Install
+// now when there is a document, otherwise wait for one.
+if (document.documentElement) {
+	installDemoPointer();
+} else {
+	document.addEventListener("DOMContentLoaded", installDemoPointer, {
+		once: true,
+	});
+}
