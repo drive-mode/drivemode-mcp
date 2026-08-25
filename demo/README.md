@@ -42,8 +42,8 @@ Three processes. Read every URL from its own output — never hardcode a port.
 # 1. the writer (in-memory, single room)
 DRIVEMODE_HTTP_PORT=4600 bun run writer
 
-# 2. the reference viewer
-bun run viewer            # Vite picks a free port and prints it
+# 2. the reference viewer — give it a port of its own
+bun run --cwd apps/viewer dev -- --port 5199 --strictPort
 
 # 3. the demo surfaces + a same-origin /rpc proxy
 node demo/serve.mjs       # http://127.0.0.1:8080/ios/  and  /stage/
@@ -76,6 +76,12 @@ them.
 
 Point the viewer at the writer with `?writer=http://127.0.0.1:4600` — its
 built-in default is port 8787, which the Cline hub dashboard also wants.
+
+**Start the hub before the viewer, and pin the viewer's port.** Both are Vite
+apps that prefer 5173. The hub announces its webview port *before* binding it,
+so if the viewer wins that bind the hub falls back to another port and keeps
+proxying the one it announced — serving the viewer's bundle inside the hub's
+own shell. Right title, right chrome, wrong app. That cost one recording.
 
 ## Record the video
 
