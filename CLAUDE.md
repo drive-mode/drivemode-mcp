@@ -70,6 +70,10 @@ bun run writer                  # start the single-room writer (prints live URLs
 bun run viewer                  # Vite dev server for the reference viewer
 bun run --cwd apps/writer mcp   # MCP stdio proxy -> DRIVEMODE_WRITER_URL
 bun run --cwd apps/viewer typecheck
+
+node demo/demo.mjs doctor       # demo prerequisites, with the fix for each
+node demo/demo.mjs record       # start the stack, film the demo, encode an MP4
+node demo/demo.mjs down         # stop whatever the demo started
 ```
 
 Typical three-terminal loop:
@@ -101,7 +105,8 @@ apps/writer/src/
   mcp-stdio.ts    # stdio façade that proxies every tool to a running writer's /rpc
 apps/viewer/src/  # React 19 + Vite reference UI (roster + Spotlight + feed)
 packages/packs-*/ # per-domain Zod validators for work payloads
-tests/            # acceptance.test.ts, packs-fleet.test.ts
+tests/            # acceptance.test.ts, packs-fleet.test.ts, subscriber-isolation.test.ts
+demo/             # end-to-end demo: scenario, iPhone recreation, recorder
 examples/         # MCP host configs
 ```
 
@@ -165,6 +170,31 @@ A new tool touches four places: `mcpServer.ts` (definition + input schema),
 `http.ts` `dispatchRpc` (the `/rpc` case), `roomService.ts` (behavior), and
 `mcp-stdio.ts` (the proxied tool). Miss one and the tool works over HTTP but not
 over stdio, or vice versa.
+
+## The demo
+
+`demo/` is the end-to-end demo and its recorder. It exercises every MCP
+primitive and all five packs against a running writer, and films the reference
+viewer beside a web recreation of the SwiftUI phone client — both folding the
+same event log. Nothing is seeded into a UI; the harness only makes `/rpc`
+calls, so if it works in the demo it works from an MCP host.
+
+`node demo/demo.mjs` is the single entry point (`doctor`, `up`, `status`,
+`play`, `record`, `down`). It encodes the ordering rules that are easy to get
+wrong — the hub has to start before the viewer or it proxies the wrong app, the
+viewer needs a pinned port, each surface is identity-checked by page title
+before filming, and the writer is reset per run because the scenario reuses
+fixed grant ids. Do not re-derive those by hand; use the CLI.
+
+A scenario is a plain module exporting `chapters` (and optionally
+`phoneSurface`), so a new demo is a new file plus `--scenario`, not an edit to
+the recorder. The contract is in [`demo/README.md`](demo/README.md).
+
+The phone is a **web recreation**, labelled as such on screen: `drive-ios` is
+SwiftUI and cannot build without Xcode. `demo/ios/fold.js` is a 1:1 port of
+`apply(wireEvent:)` from that repo's `WriterClient.swift`, so it is evidence the
+wire carries what the phone needs — not evidence the Swift app builds. If the
+fold there drifts from the Swift one, the demo stops being evidence of anything.
 
 ## Conventions
 
