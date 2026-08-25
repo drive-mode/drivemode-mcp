@@ -118,8 +118,18 @@ export function createWriterStore(input?: {
 				}
 			}
 
+			// The log and the snapshot are already updated above, so a
+			// subscriber that throws must not fail the append: doing so would
+			// report a write that actually landed as an error, and would starve
+			// every subscriber after this one in the set. A throwing listener is
+			// a dead consumer — a closed SSE stream, typically — so drop it and
+			// carry on. Deleting during iteration is safe for a Set.
 			for (const listener of listeners) {
-				listener(entry, state.snapshot);
+				try {
+					listener(entry, state.snapshot);
+				} catch {
+					listeners.delete(listener);
+				}
 			}
 			const result = { seq, snapshot: state.snapshot, event };
 			if (event.type === "control.join") {
