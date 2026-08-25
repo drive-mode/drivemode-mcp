@@ -22,9 +22,15 @@ const DELTA = "agent:delta";
 const SESSION = "ses_presenter_audit";
 const PROGRAM = "prog_presenter_audit";
 
-/** Pacing: shorter in CI/smoke runs, roomier when recording video. */
-const PACE = Number(process.env.DEMO_PACE_MS ?? 900);
-const beat = (mult = 1) => sleep(PACE * mult);
+/**
+ * Pacing: shorter in CI/smoke runs, roomier when recording video.
+ *
+ * Read at call time rather than at import. Captured in a module-scope const it
+ * would freeze whatever `DEMO_PACE_MS` happened to be when the module was
+ * first imported — which is how `--pace` came to be silently ignored.
+ */
+const beat = (mult = 1) =>
+	sleep(Number(process.env.DEMO_PACE_MS ?? 900) * mult);
 
 let beatIndex = 0;
 

@@ -27,7 +27,6 @@ import { existsSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { recordDemo } from "./record.mjs";
 import {
 	CLINE,
 	PORTS,
@@ -50,6 +49,11 @@ const flag = (name, fallback) => {
 	return i === -1 ? fallback : argv[i + 1];
 };
 const has = (name) => argv.includes(`--${name}`);
+
+// Set before anything can import a scenario: a story module may read this at
+// module scope, and `loadScenario()` runs before the command body. Applied
+// once here so `play` honours --pace too, not just `record`.
+if (flag("pace")) process.env.DEMO_PACE_MS = flag("pace");
 
 const say = (msg) => process.stdout.write(`· ${msg}\n`);
 const warn = (msg) => process.stdout.write(`  ! ${msg}\n`);
@@ -244,7 +248,11 @@ const commands = {
 		const list = through(chapters, flag("chapter"));
 		const wantHub = !has("no-hub");
 		const out = flag("out", "/tmp/drivemode-demo/recording");
-		if (flag("pace")) process.env.DEMO_PACE_MS = flag("pace");
+
+		// Imported here, not at the top: record.mjs pulls in Playwright, and
+		// `doctor` exists precisely to tell you when Playwright is missing. A
+		// static import makes the diagnostic crash on the thing it diagnoses.
+		const { recordDemo } = await import("./record.mjs");
 
 		say(`scenario ${path} (${list.length} chapters)`);
 		const live = await ensureUp({ hub: wantHub, freshWriter: !has("keep-writer") });

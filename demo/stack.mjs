@@ -15,6 +15,10 @@
  *   guard correctly rejects them.
  * - Both browser surfaces are identity-checked by page title before anything
  *   is recorded. A three-minute recording of the wrong app looks fine.
+ * - A service that is already healthy is adopted, not started again. Bringing
+ *   up a partially-live stack used to spawn a second copy of whatever was
+ *   already running, overwriting its recorded pid and orphaning the original —
+ *   so `down` could no longer stop it.
  */
 
 import { spawn } from "node:child_process";
@@ -38,6 +42,9 @@ export const PORTS = {
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/** Page titles are how a surface proves it is the app we think it is. */
+const PHONE_TITLE = "Drive — iOS client (web recreation)";
 
 // ------------------------------------------------------------------ state
 
@@ -141,6 +148,11 @@ export async function startHub({ log = () => {} } = {}) {
 		log(`no hub at ${CLINE} — skipping (the hub segment needs it)`);
 		return null;
 	}
+	const running = urls()?.hub;
+	if (running && (await fetchTitle(running, 2000)) === "Cline Drive") {
+		log(`hub already running at ${running}`);
+		return running;
+	}
 	log("starting the hub (first, so its webview wins port 5173)");
 	const { getOutput } = launch("hub", "bun", ["run", "--cwd", "apps/cline-hub", "dev"], {
 		cwd: CLINE,
@@ -159,6 +171,11 @@ export async function startHub({ log = () => {} } = {}) {
 /** The reference viewer, on a pinned port so it cannot race the hub. */
 export async function startViewer({ log = () => {} } = {}) {
 	const port = PORTS.viewer;
+	const url = `http://127.0.0.1:${port}/`;
+	if ((await fetchTitle(url, 2000)) === "Drive Mode") {
+		log(`viewer already running at ${url}`);
+		return url;
+	}
 	log(`starting the reference viewer on ${port} (pinned)`);
 	launch("viewer", "bun", [
 		"run",
@@ -170,7 +187,6 @@ export async function startViewer({ log = () => {} } = {}) {
 		String(port),
 		"--strictPort",
 	]);
-	const url = `http://127.0.0.1:${port}/`;
 	await waitForApp(url, "Drive Mode", "reference viewer");
 	log(`viewer ready at ${url}`);
 	return url;
@@ -179,12 +195,16 @@ export async function startViewer({ log = () => {} } = {}) {
 /** The static host for the stage + phone, with its same-origin /rpc proxy. */
 export async function startSurfaces({ writerUrl, log = () => {} } = {}) {
 	const port = PORTS.surfaces;
+	const url = `http://127.0.0.1:${port}/`;
+	if ((await fetchTitle(`${url}ios/`, 2000)) === PHONE_TITLE) {
+		log(`surfaces already running at ${url}`);
+		return url;
+	}
 	log(`starting the demo surfaces on ${port}`);
 	launch("surfaces", "node", ["demo/serve.mjs"], {
 		env: { DEMO_PORT: String(port), DRIVEMODE_WRITER_URL: writerUrl },
 	});
-	const url = `http://127.0.0.1:${port}/`;
-	await waitForApp(`${url}ios/`, "Drive — iOS client (web recreation)", "demo surfaces");
+	await waitForApp(`${url}ios/`, PHONE_TITLE, "demo surfaces");
 	log(`surfaces ready at ${url}`);
 	return url;
 }
