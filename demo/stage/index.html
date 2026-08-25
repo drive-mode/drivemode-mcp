@@ -74,16 +74,32 @@ iframe { width:100%; height:100%; border:0; display:block; background:#0A0A0A; }
 	<section class="pane">
 		<div class="pane-head"><b>Drive for iPhone</b><span>polls /rpc events_since</span>
 			<span class="tagchip recreation">web recreation</span></div>
-		<iframe id="phone" src="/ios/"></iframe>
+		<iframe id="phone" src="/ios/?embed=1"></iframe>
 	</section>
 </main>
 
+<script src="../pointer.js"></script>
 <script>
 	// The viewer URL is injected so the recorder can point the stage at whatever
 	// port Vite actually chose — never a memorised one.
+	// The viewer URL must be passed in. Vite picks whatever port is free, so a
+	// hardcoded default is not merely stale — it silently loads whichever app
+	// happens to hold that port. That is exactly how this pane once filmed the
+	// hub dashboard while claiming to be the reference viewer.
 	const params = new URLSearchParams(location.search);
-	document.getElementById("viewer").src =
-		params.get("viewer") ?? "http://127.0.0.1:5174/?writer=http://127.0.0.1:4600";
+	const viewer = params.get("viewer");
+	if (viewer) {
+		document.getElementById("viewer").src = viewer;
+	} else {
+		document.querySelector(".pane").insertAdjacentHTML(
+			"beforeend",
+			'<div style="padding:40px;color:#F53969;font-size:13px">' +
+				"No <code>?viewer=</code> given. Pass the URL the viewer actually " +
+				"printed — this pane will not guess a port." +
+				"</div>",
+		);
+		document.getElementById("viewer").remove();
+	}
 
 	window.setChapter = (num, title, blurb) => {
 		document.getElementById("ch-num").textContent = num;

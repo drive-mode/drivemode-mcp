@@ -264,18 +264,62 @@ function render() {
 		tab.classList.toggle("on", tab.dataset.surface === surface);
 }
 
-for (const tab of document.querySelectorAll(".tab")) {
-	tab.addEventListener("click", () => {
-		surface = tab.dataset.surface;
-		render();
-	});
+const SURFACE_ORDER = ["spotlight", "work", "artifacts", "agents", "activity"];
+
+function show(next) {
+	if (!SURFACE_ORDER.includes(next)) return;
+	surface = next;
+	render();
 }
+
+for (const tab of document.querySelectorAll(".tab")) {
+	tab.addEventListener("click", () => show(tab.dataset.surface));
+}
+
+/**
+ * Swipe between root surfaces, as the app does — the tab bar and a horizontal
+ * swipe are the same navigation. (In the app this is root-surfaces-only; a
+ * pushed view keeps edge-swipe-back for itself. Every surface here is a root
+ * one, so they all swipe.)
+ *
+ * Threshold and the horizontal-intent check exist so a swipe cannot fire while
+ * the user is really scrolling a long list vertically.
+ */
+const SWIPE_MIN_X = 55;
+let swipeFrom = null;
+
+const body = el("body");
+body.addEventListener(
+	"pointerdown",
+	(event) => {
+		swipeFrom = { x: event.clientX, y: event.clientY };
+	},
+	{ passive: true },
+);
+body.addEventListener(
+	"pointerup",
+	(event) => {
+		if (!swipeFrom) return;
+		const dx = event.clientX - swipeFrom.x;
+		const dy = event.clientY - swipeFrom.y;
+		swipeFrom = null;
+		if (Math.abs(dx) < SWIPE_MIN_X || Math.abs(dx) <= Math.abs(dy)) return;
+		const at = SURFACE_ORDER.indexOf(surface);
+		// Swiping left moves forward, the way a paged tab view does.
+		show(SURFACE_ORDER[at + (dx < 0 ? 1 : -1)] ?? surface);
+	},
+	{ passive: true },
+);
+body.addEventListener("pointercancel", () => {
+	swipeFrom = null;
+});
 
 window.driveDemo = {
 	go(next) {
-		surface = next;
-		render();
+		show(next);
 	},
+	surfaces: () => [...SURFACE_ORDER],
+	current: () => surface,
 	beat(i) {
 		beatCursor = i;
 		render();

@@ -41,7 +41,8 @@ body {
 
 /* --- device ---------------------------------------------------------- */
 .phone {
-	width: 393px; height: 812px;
+	width: var(--phone-w, 393px);
+	height: var(--phone-h, 812px);
 	background: #000;
 	border-radius: 46px;
 	padding: 11px;
@@ -200,3 +201,24 @@ main::-webkit-scrollbar { width: 0; }
 }
 .tab i { font-style: normal; font-size: 16px; line-height: 1; }
 .tab.on { color: var(--violet-text); }
+
+
+/*
+ * Embed mode (`?embed=1`): the device inside the recording stage.
+ *
+ * The stage pane is shorter than a full-height iPhone, and a tab bar that falls
+ * below the fold cannot be tapped — or filmed. The device shrinks to fit rather
+ * than being scaled with a transform, so on-screen coordinates stay exact and a
+ * recorded tap lands where the pointer is drawn. The stage's own pane header
+ * carries the "web recreation" label, so the page-level one is redundant here.
+ */
+body.embed { padding: 6px 0 0; align-content: start; }
+body.embed .label { display: none; }
+body.embed .frame-wrap { gap: 0; }
+body.embed .phone {
+	--phone-h: 742px;
+	border-radius: 42px;
+	padding: 9px;
+}
+body.embed .screen { border-radius: 33px; }
+body.embed .tabs { padding-bottom: 12px; }

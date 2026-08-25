@@ -49,6 +49,13 @@
 	</div>
 </div>
 
+<script>
+	// The recording stage embeds this page in a shorter pane; see `.embed` in
+	// ios.css. Applied before the module runs so there is no visible reflow.
+	if (new URLSearchParams(location.search).has("embed")) {
+		document.body.classList.add("embed");
+	}
+</script>
 <script type="module" src="app.js"></script>
 </body>
 </html>

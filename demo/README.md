@@ -58,6 +58,11 @@ node demo/run-scenario.mjs --chapter tests  # replay through `tests`, then stop
 DEMO_PACE_MS=15 node demo/run-scenario.mjs  # as fast as the writer will take it
 ```
 
+The phone supports the same swipe-between-surfaces gesture the app does, so the
+recording can show it: a horizontal drag past ~55px moves one surface, and a
+drag that is more vertical than horizontal is ignored so it cannot fire while a
+long list is being scrolled.
+
 `--chapter` replays **from the start through** the chapter you name — it does
 not run that chapter alone. Chapters are not independent: `tests` transfers a
 Presenter grant that `handoff` created, `handoff` transfers one that `presenter`
@@ -90,8 +95,37 @@ node demo/record.mjs      # restarts the writer, records both segments
 It writes two WebM files. `ffmpeg` (a full build, not Playwright's VP8-only
 one) turns them into a single MP4 — see `make-video.sh`.
 
-The recorder never types into the UIs. It makes MCP calls and switches which
-tab is visible; everything else is the clients reacting.
+Pass the URLs the apps actually printed:
+
+```bash
+DEMO_VIEWER_URL=http://127.0.0.1:5173/ \
+DEMO_HUB_URL=http://127.0.0.1:8787/ \
+node demo/record.mjs
+```
+
+The recorder checks both are the app it expects before filming, by reading the
+page title. Vite takes whatever port is free, so "the viewer" and "the hub
+webview" trade places between runs — this pane has already filmed the hub
+dashboard once while captioned as the reference viewer. A three-minute
+recording of the wrong app looks completely fine, so the check is worth the
+second it costs.
+
+### Seeing the input
+
+Screen recordings do not capture the OS cursor, and a browser draws nothing at
+all for touch — so without help a viewer sees panels changing with no idea what
+was pressed. `pointer.js` draws the input on top of the page: an arrow for the
+desktop panes, an Apple-style touch ring for the phone, a ripple on press, and a
+fading trail on swipe. The stage loads it with a script tag; the recorder
+injects the same file into the hub dashboard, which the demo does not own. It
+lives in a shadow root and never takes pointer events, so it cannot restyle or
+intercept anything on the page underneath.
+
+It is a *readout*, not a stand-in. `pointer-driver.mjs` moves the overlay and
+dispatches the real Playwright input to the same coordinates in one call, so
+every tap, click and swipe you see on video actually happened — the phone's
+surfaces are reached by pressing its tab bar and by swiping the deck, not by
+calling into the page.
 
 ## The scenario
 
