@@ -26,6 +26,10 @@ bun install
 
 The writer depends on `file:../../../cline-drivecode/sdk/dist-bundle/drive-kernel`.
 Published coordinate (GitHub Packages): `@drive-mode/drive-kernel`. Do not import `@cline/*`.
+
+## Run
+
+```bash
 # Terminal 1 — single room writer (prints live URLs; port is ephemeral)
 bun run writer
 
@@ -40,6 +44,24 @@ DRIVEMODE_WRITER_URL=http://127.0.0.1:<printed-port> bun run --cwd apps/writer m
 Sample MCP configs: [`examples/cursor-mcp.json`](examples/cursor-mcp.json), [`examples/claude-desktop.json`](examples/claude-desktop.json).
 
 Discovery file (written on writer start): `~/.drivemode/writer.json`.
+
+## Demos
+
+`demo/` drives a scripted multi-agent session through every MCP primitive and
+all five packs, and films the reference viewer and an iPhone client folding the
+same event log side by side. One entry point:
+
+```bash
+node demo/demo.mjs doctor    # what is missing before you can record
+node demo/demo.mjs record    # start the stack, film it, encode an MP4
+node demo/demo.mjs down      # stop everything it started
+```
+
+It starts the services in the order that actually works, pins the ports that
+otherwise collide, identity-checks each surface before filming, and resets the
+writer so a run is repeatable. `--scenario ./my-story.mjs` films a different
+story with the same rig. Full guide, including how to write a new scenario:
+[`demo/README.md`](demo/README.md).
 
 ## MCP tools (v0)
 
@@ -70,7 +92,12 @@ and the stage remains typed events rather than pixel streaming.
 ## Packs
 
 - `coding` — `work.edit`, `work.command`, `work.test`, `work.plan`, `work.decision`, `work.generic`
+- `tasks` — `work.task.created`, `work.task.state`, `work.task.progress` (identity, state, dependency edges)
+- `artifacts` — `work.artifact.created`, `work.artifact.lifecycle`, `work.artifact.superseded`
+- `direction` — `work.direction.beat` (choreography a phone can digest)
 - `demo-ops` — `work.ops.alert`, `work.ops.runbook_step` (proves non-coding use cases)
+
+Fleet packs ride `work.generic`; the kernel never special-cases one.
 
 ## Hard rules
 
@@ -83,11 +110,12 @@ and the stage remains typed events rather than pixel streaming.
 ## Layout
 
 ```text
-apps/writer/     # HTTP writer + MCP stdio proxy
-apps/viewer/     # React call-feel UI (roster + Spotlight + feed)
-packages/packs-coding/
-packages/packs-demo-ops/
-examples/
+apps/writer/       # HTTP writer + MCP stdio proxy
+apps/viewer/       # React call-feel UI (roster + Spotlight + feed)
+packages/packs-*/  # coding, tasks, artifacts, direction, demo-ops
+demo/              # the end-to-end demo + recorder (see demo/README.md)
+tests/             # bun:test suite
+examples/          # MCP host configs
 ```
 
 ## Verify

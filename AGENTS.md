@@ -25,6 +25,10 @@ Ship the **feeling** of live reacting agents on a shared Spotlight for any MCP h
 bun test
 ```
 
+To see it rather than test it: `node demo/demo.mjs record` films the whole
+thing. `node demo/demo.mjs doctor` says what is missing first. Details in
+`demo/README.md`.
+
 The kernel dependency is `file:../../../cline-drivecode/sdk/dist-bundle/drive-kernel`.
 Generate it with `bun run build:drive-kernel` in the Cline clone. After regenerating
 the bundle, run `bun install --force` here before `bun test`. Typecheck resolves
