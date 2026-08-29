@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { PACK_ID_VALUES } from "./packIds.js";
 
 /**
  * Stdio MCP façade that proxies tool calls to a running writer HTTP `/rpc`.
@@ -207,7 +208,7 @@ async function main() {
 		sinceSeq: z.number().int().nonnegative().default(0),
 	});
 	tool(server, "pack_set", "Switch active pack.", {
-		packId: z.enum(["coding", "demo-ops"]),
+		packId: z.enum(PACK_ID_VALUES),
 	});
 	tool(server, "pack_list", "List packs.", {});
 

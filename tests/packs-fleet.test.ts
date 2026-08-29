@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createRoomService } from "../apps/writer/src/roomService.ts";
+import { PACK_ID_VALUES } from "../apps/writer/src/packIds.ts";
+import { createRoomService, listPackIds } from "../apps/writer/src/roomService.ts";
 import { createWriterStore } from "../apps/writer/src/store.ts";
 import { validateTasksWork } from "../packages/packs-tasks/src/index.ts";
 import { validateArtifactsWork } from "../packages/packs-artifacts/src/index.ts";
@@ -407,5 +408,17 @@ describe("event log — sequence numbering", () => {
 		});
 
 		expect(service.snapshot().seq).toBe(1);
+	});
+});
+
+describe("pack_set — MCP enum vs packs on disk", () => {
+	test("pack_set accepts every registered pack id", () => {
+		const store = createWriterStore({ roomId: "default" });
+		const service = createRoomService(store);
+		expect(listPackIds().slice().sort()).toEqual([...PACK_ID_VALUES].sort());
+		for (const packId of PACK_ID_VALUES) {
+			expect(service.setActivePack(packId)).toEqual({ activePackId: packId });
+			expect(service.snapshot().activePackId).toBe(packId);
+		}
 	});
 });

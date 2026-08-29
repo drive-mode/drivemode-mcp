@@ -1,5 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
+import { PACK_ID_VALUES } from "./packIds.js";
 import type { RoomService } from "./roomService.js";
 import { listPackIds } from "./roomService.js";
 
@@ -532,9 +533,9 @@ export function createMcpServer(service: RoomService): McpServer {
 
 	server.tool(
 		"pack_set",
-		"Switch the active work pack (coding | demo-ops).",
+		"Switch the active work pack (coding | demo-ops | tasks | artifacts | direction).",
 		{
-			packId: z.enum(["coding", "demo-ops"]),
+			packId: z.enum(PACK_ID_VALUES),
 		},
 		async (args) => {
 			try {
