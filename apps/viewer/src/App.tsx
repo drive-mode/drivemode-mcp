@@ -45,21 +45,52 @@ type SnapshotResponse = {
 	conversationFeed: FeedItem[];
 };
 
+type SseEntry = {
+	seq: number;
+	event: {
+		type: string;
+		track?: string;
+		text?: string;
+		at?: string;
+		actorId?: string;
+	};
+};
+
 type SsePayload = {
 	type: string;
 	logId?: string;
 	snapshot?: RoomSnapshot;
-	entry?: {
-		seq: number;
-		event: {
-			type: string;
-			track?: string;
-			text?: string;
-			at?: string;
-			actorId?: string;
-		};
-	};
+	backlog?: SseEntry[];
+	entry?: SseEntry;
 };
+
+/**
+ * Fold log entries into the feed. Delivery is at-least-once — a reconnect's
+ * hello backlog can overlap entries the live stream already delivered — so
+ * the fold is idempotent: seq identifies an entry, and one already folded is
+ * skipped, not appended twice.
+ */
+function foldFeed(prev: FeedItem[], entries: SseEntry[]): FeedItem[] {
+	const seen = new Set(prev.map((item) => item.seq));
+	const additions = entries
+		.filter(
+			(entry) =>
+				(entry.event.type === "conversation.message" ||
+					entry.event.type === "conversation.narration") &&
+				!seen.has(entry.seq),
+		)
+		.map((entry) => ({
+			seq: entry.seq,
+			at: entry.event.at ?? new Date().toISOString(),
+			actorId: entry.event.actorId,
+			text: entry.event.text ?? "",
+			kind:
+				entry.event.type === "conversation.narration"
+					? ("narration" as const)
+					: ("message" as const),
+		}));
+	return additions.length ? [...prev, ...additions] : prev;
+}
 
 function defaultWriterUrl(): string {
 	if (typeof window === "undefined") {
@@ -143,6 +174,9 @@ export function App() {
 						}
 						logIdRef.current = payload.logId ?? logIdRef.current;
 						setRoom(payload.snapshot);
+						// On a reconnect, entries missed during the outage arrive
+						// only in this backlog — the live stream resumes after it.
+						setFeed((prev) => foldFeed(prev, payload.backlog ?? []));
 						return;
 					}
 					if (payload.type === "event" && payload.snapshot && payload.entry) {
@@ -151,34 +185,8 @@ export function App() {
 						if (payload.entry.event.track === "work") {
 							setSpotlightKey((k) => k + 1);
 						}
-						if (
-							payload.entry.event.type === "conversation.message" ||
-							payload.entry.event.type === "conversation.narration"
-						) {
-							const text = payload.entry.event.text ?? "";
-							const entry = payload.entry;
-							// Delivery is at-least-once (a reconnect can overlap
-							// the resume cursor), so the fold must be idempotent:
-							// seq identifies the entry, and an entry already
-							// folded is skipped, not appended twice.
-							setFeed((prev) =>
-								prev.some((item) => item.seq === entry.seq)
-									? prev
-									: [
-											...prev,
-											{
-												seq: entry.seq,
-												at: entry.event.at ?? new Date().toISOString(),
-												actorId: entry.event.actorId,
-												text,
-												kind:
-													entry.event.type === "conversation.narration"
-														? "narration"
-														: "message",
-											},
-										],
-							);
-						}
+						const entry = payload.entry;
+						setFeed((prev) => foldFeed(prev, [entry]));
 					}
 				};
 				es.onerror = () => {
