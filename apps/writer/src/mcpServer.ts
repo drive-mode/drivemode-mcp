@@ -192,6 +192,14 @@ export function createMcpServer(service: RoomService): McpServer {
 			payload: z.record(z.unknown()),
 			actorId: z.string().min(1).optional(),
 			narrate: z.boolean().optional(),
+			opId: z
+				.string()
+				.min(1)
+				.max(128)
+				.optional()
+				.describe(
+					"Retry key: reuse the same opId when retrying and the writer replays the recorded result instead of appending a duplicate.",
+				),
 		},
 		async (args) => {
 			try {
@@ -201,6 +209,7 @@ export function createMcpServer(service: RoomService): McpServer {
 					payload: args.payload,
 					actorId: args.actorId,
 					narrate: args.narrate,
+					opId: args.opId,
 				});
 				return jsonResult({
 					seq: result.seq,
@@ -402,10 +411,22 @@ export function createMcpServer(service: RoomService): McpServer {
 		{
 			text: z.string().min(1).max(500),
 			actorId: z.string().min(1).optional(),
+			opId: z
+				.string()
+				.min(1)
+				.max(128)
+				.optional()
+				.describe(
+					"Retry key: reuse the same opId when retrying and the writer replays the recorded result instead of appending a duplicate.",
+				),
 		},
 		async (args) => {
 			try {
-				const result = service.publishConversation(args.text, args.actorId);
+				const result = service.publishConversation(
+					args.text,
+					args.actorId,
+					args.opId,
+				);
 				return jsonResult({ seq: result.seq, event: result.event });
 			} catch (error) {
 				return errorResult(error);
@@ -527,7 +548,12 @@ export function createMcpServer(service: RoomService): McpServer {
 		async (args) => {
 			const events = service.eventsSince(args.sinceSeq);
 			const snap = service.snapshot();
-			return jsonResult({ sinceSeq: args.sinceSeq, latestSeq: snap.seq, events });
+			return jsonResult({
+				sinceSeq: args.sinceSeq,
+				latestSeq: snap.seq,
+				logId: snap.logId,
+				events,
+			});
 		},
 	);
 

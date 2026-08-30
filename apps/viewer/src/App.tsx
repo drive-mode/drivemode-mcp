@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Participant = {
 	id: string;
@@ -39,6 +39,7 @@ type FeedItem = {
 
 type SnapshotResponse = {
 	seq: number;
+	logId?: string;
 	room: RoomSnapshot;
 	activePackId: string;
 	conversationFeed: FeedItem[];
@@ -46,6 +47,7 @@ type SnapshotResponse = {
 
 type SsePayload = {
 	type: string;
+	logId?: string;
 	snapshot?: RoomSnapshot;
 	entry?: {
 		seq: number;
@@ -79,6 +81,12 @@ export function App() {
 	const [feed, setFeed] = useState<FeedItem[]>([]);
 	const [spotlightKey, setSpotlightKey] = useState(0);
 	const [error, setError] = useState<string | null>(null);
+	// Bumped when the writer's logId changes mid-stream: an in-memory writer
+	// that restarted is a *different* log whose seqs restart at 1, so folding
+	// its events onto state from the previous one would splice two histories.
+	// The bump tears the whole connection down and rebuilds from /snapshot.
+	const [connectNonce, setConnectNonce] = useState(0);
+	const logIdRef = useRef<string | null>(null);
 
 	const humanId = useMemo(() => {
 		const human = room?.participants.find((p) => p.kind === "human");
@@ -108,6 +116,7 @@ export function App() {
 				if (cancelled) {
 					return;
 				}
+				logIdRef.current = snap.logId ?? null;
 				setRoom(snap.room);
 				setSeq(snap.seq);
 				setPackId(snap.activePackId);
@@ -124,6 +133,15 @@ export function App() {
 					setError(null);
 					const payload = JSON.parse(msg.data) as SsePayload;
 					if (payload.type === "hello" && payload.snapshot) {
+						if (
+							payload.logId &&
+							logIdRef.current &&
+							payload.logId !== logIdRef.current
+						) {
+							setConnectNonce((n) => n + 1);
+							return;
+						}
+						logIdRef.current = payload.logId ?? logIdRef.current;
 						setRoom(payload.snapshot);
 						return;
 					}
@@ -139,19 +157,27 @@ export function App() {
 						) {
 							const text = payload.entry.event.text ?? "";
 							const entry = payload.entry;
-							setFeed((prev) => [
-								...prev,
-								{
-									seq: entry.seq,
-									at: entry.event.at ?? new Date().toISOString(),
-									actorId: entry.event.actorId,
-									text,
-									kind:
-										entry.event.type === "conversation.narration"
-											? "narration"
-											: "message",
-								},
-							]);
+							// Delivery is at-least-once (a reconnect can overlap
+							// the resume cursor), so the fold must be idempotent:
+							// seq identifies the entry, and an entry already
+							// folded is skipped, not appended twice.
+							setFeed((prev) =>
+								prev.some((item) => item.seq === entry.seq)
+									? prev
+									: [
+											...prev,
+											{
+												seq: entry.seq,
+												at: entry.event.at ?? new Date().toISOString(),
+												actorId: entry.event.actorId,
+												text,
+												kind:
+													entry.event.type === "conversation.narration"
+														? "narration"
+														: "message",
+											},
+										],
+							);
 						}
 					}
 				};
@@ -172,7 +198,7 @@ export function App() {
 			cancelled = true;
 			es?.close();
 		};
-	}, [writerUrl]);
+	}, [writerUrl, connectNonce]);
 
 	async function raiseHand() {
 		await fetch(`${writerUrl.replace(/\/$/, "")}/api/raise-hand`, {
