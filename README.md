@@ -43,7 +43,8 @@ DRIVEMODE_WRITER_URL=http://127.0.0.1:<printed-port> bun run --cwd apps/writer m
 
 Sample MCP configs: [`examples/cursor-mcp.json`](examples/cursor-mcp.json), [`examples/claude-desktop.json`](examples/claude-desktop.json).
 
-Discovery file (written on writer start): `~/.drivemode/writer.json`.
+Discovery file (written on writer start): `~/.drivemode/writer.json`
+(`url`, `port`, `roomId`, `logId`, `pid`, `startedAt`).
 
 ## Demos
 
@@ -89,6 +90,25 @@ is exclusive; transfers and revocations are append-only control events. Title
 payloads contain only opaque skill/resource references, never their contents,
 and the stage remains typed events rather than pixel streaming.
 
+### Wire contract: resume, restarts, retries
+
+- `seq` is the resume cursor, and `logId` names the log incarnation that
+  issued it. The in-memory writer restarts as a *different* log whose `seq`
+  also starts at 1, so clients compare the `logId` on `/health`, `/snapshot`,
+  `events_since`, and the SSE `hello`, and resync from the top when it
+  changes — `latestSeq < cursor` alone misses a fresh log that has already
+  grown past the old cursor.
+- SSE messages carry `id: <logId>:<seq>`; on auto-reconnect the writer honors
+  `Last-Event-ID` so the stream resumes at the true cursor instead of
+  replaying the connect-time backlog. Consumers that stop reading are shed
+  once their unread queue passes a bound — safe, because the replayable log
+  lets them reconnect and resume.
+- `stage_publish_work` and `conversation_publish` accept an optional `opId`
+  retry key: replaying the same `opId` returns the recorded result instead of
+  appending a visible duplicate.
+
+The reasoning is recorded in [`docs/DDIA-LESSONS.md`](docs/DDIA-LESSONS.md).
+
 ## Packs
 
 - `coding` — `work.edit`, `work.command`, `work.test`, `work.plan`, `work.decision`, `work.generic`
@@ -114,6 +134,7 @@ apps/writer/       # HTTP writer + MCP stdio proxy
 apps/viewer/       # React call-feel UI (roster + Spotlight + feed)
 packages/packs-*/  # coding, tasks, artifacts, direction, demo-ops
 demo/              # the end-to-end demo + recorder (see demo/README.md)
+docs/              # DDIA-LESSONS.md — why the wire is shaped like this
 tests/             # bun:test suite
 examples/          # MCP host configs
 ```
