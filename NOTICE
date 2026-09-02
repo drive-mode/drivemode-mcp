@@ -1,0 +1,12 @@
+Drive Mode MCP (drivemode-mcp)
+Copyright 2026 Harrison Halperin
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This product depends on @drive-mode/drive-kernel, the generated standalone
+distribution of the Drive kernel from cline-drivecode (Apache License 2.0),
+which is built on Cline (Copyright Cline Bot Inc., Apache License 2.0).
+Its only runtime dependency beyond that is zod (MIT License).
+
+Trademarks. "Cline" is a trademark of Cline Bot Inc. and is not licensed
+under the Apache License.
