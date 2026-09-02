@@ -92,7 +92,7 @@ function inkOf(id) {
 		"agent:beacon": "#4C9AFF",
 		"agent:cinder": "#3FB950",
 		"agent:delta": "#D29922",
-		"drive:harrison": "#E6EDF3",
+		"drive:you": "#E6EDF3",
 	};
 	return map[id] ?? "#8B949E";
 }

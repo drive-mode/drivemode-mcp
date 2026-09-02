@@ -13,7 +13,7 @@
 
 import { inMinutes, rpc, sleep } from "./rpc.mjs";
 
-const HUMAN = "drive:harrison";
+const HUMAN = "drive:you";
 const ATLAS = "agent:atlas";
 const BEACON = "agent:beacon";
 const CINDER = "agent:cinder";
@@ -67,7 +67,7 @@ export const chapters = [
 			await rpc("room_join", {
 				id: HUMAN,
 				kind: "human",
-				displayName: "Harrison",
+				displayName: "You",
 				role: "host",
 			});
 			await beat();
