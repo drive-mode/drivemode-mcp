@@ -179,7 +179,7 @@ describe("session registry", () => {
 		service.scheduleSession(
 			"session-auth",
 			"2026-08-18T20:00:00.000Z",
-			"host",
+			"you",
 		);
 		service.startSession("session-auth", "program-auth", "you");
 		service.endSession({
